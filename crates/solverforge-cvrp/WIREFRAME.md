@@ -72,7 +72,7 @@ All functions are generic over `S: VrpSolution`.
 ### Usage as macro attribute fn pointers
 
 ```rust
-#[shadow_variable_updates(
+#[planning_list_variable(
     merge_feasible_fn = "solverforge_cvrp_lib::is_time_feasible",
     cw_depot_fn       = "solverforge_cvrp_lib::depot_for_cw",
     cw_distance_fn    = "solverforge_cvrp_lib::distance",

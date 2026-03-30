@@ -64,6 +64,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 
 **Consumed attributes on fields:**
 - `#[planning_entity_collection]` — `Vec<Entity>` field containing planning entities
+- `#[planning_list_element_collection(owner = "field")]` — `Vec<usize>` field containing all elements for the named list owner
 - `#[problem_fact_collection]` — `Vec<Fact>` field containing problem facts
 - `#[planning_score]` — `Option<Score>` field (required)
 - `#[value_range_provider]` — value range source
@@ -131,11 +132,11 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 | `parse_constraints_path` | `fn(&[Attribute]) -> Option<String>` | Extracts `#[solverforge_constraints_path = "..."]` |
 | `parse_shadow_config` | `fn(&[Attribute]) -> ShadowConfig` | Parses `#[shadow_variable_updates(...)]` |
 | `find_list_owner_config` | `fn(&ShadowConfig, &Fields) -> Result<Option<ListOwnerConfig>, Error>` | Resolves `list_owner` to the entity collection field and descriptor index |
-| `vec_usize_fields` | `fn(&Fields) -> Vec<&Field>` | Collects `Vec<usize>` solution fields for list element dispatch |
+| `find_list_element_collection_config` | `fn(&ListOwnerConfig, &Fields) -> Result<ListElementCollectionConfig, Error>` | Resolves `#[planning_list_element_collection(owner = "...")]` to the concrete `Vec<usize>` field |
 | `shadow_updates_requested` | `fn(&ShadowConfig) -> bool` | Detects whether real shadow update work is configured |
 | `generate_list_operations` | `fn(&ShadowConfig, &Fields, &Ident) -> Result<TokenStream, Error>` | Generates list variable methods from the entity-side stock registry |
 | `generate_solvable_solution` | `fn(&Ident, &Option<String>) -> TokenStream` | Generates SolvableSolution/Solvable/Analyzable impls |
-| `generate_shadow_support` | `fn(&ShadowConfig, &Ident) -> TokenStream` | Generates ShadowVariableSupport impl |
+| `generate_shadow_support` | `fn(&ShadowConfig, &Fields, &Ident) -> Result<TokenStream, Error>` | Generates ShadowVariableSupport impl |
 | `generate_constraint_stream_extensions` | `fn(&Fields, &Ident) -> TokenStream` | Generates `{Name}ConstraintStreams` trait + impl on ConstraintFactory |
 | `extract_option_inner_type` | `fn(&Type) -> Result<&Type, Error>` | Extracts `T` from `Option<T>` |
 | `extract_collection_inner_type` | `fn(&Type) -> Option<&Type>` | Extracts `T` from `Vec<T>` |
@@ -147,8 +148,6 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 ```rust
 struct ShadowConfig {
     list_owner: Option<String>,
-    list_field: Option<String>,
-    element_collection: Option<String>,
     inverse_field: Option<String>,
     previous_field: Option<String>,
     next_field: Option<String>,

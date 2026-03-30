@@ -111,6 +111,7 @@ pub fn derive_planning_entity(input: TokenStream) -> TokenStream {
     PlanningSolutionImpl,
     attributes(
         planning_entity_collection,
+        planning_list_element_collection,
         problem_fact_collection,
         planning_score,
         value_range_provider,

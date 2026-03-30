@@ -26,6 +26,7 @@ struct MixedPlan {
     #[problem_fact_collection]
     workers: Vec<Worker>,
 
+    #[planning_list_element_collection(owner = "routes")]
     all_visits: Vec<usize>,
 
     #[planning_entity_collection]
