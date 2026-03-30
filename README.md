@@ -57,7 +57,7 @@ This enables aggressive compiler optimizations and cache-friendly data layouts.
   - Partitioned Search (multi-threaded via rayon)
   - VND (Variable Neighborhood Descent)
 - **Move System**: Zero-allocation typed moves with arena-based ownership
-  - Basic: ChangeMove, SwapMove, PillarChangeMove, PillarSwapMove, RuinMove
+  - Standard: ChangeMove, SwapMove, PillarChangeMove, PillarSwapMove, RuinMove
   - List: ListChangeMove, ListSwapMove, SubListChangeMove, SubListSwapMove, KOptMove, ListRuinMove
   - Nearby selection for list moves
 - **SolverManager API**: Channel-based async solving with score analysis and telemetry
@@ -189,7 +189,7 @@ With `features = ["console"]`, SolverForge displays colorful progress:
  ___) | (_) | |\ V /  __/ |   |  _| (_) | | | (_| |  __/
 |____/ \___/|_| \_/ \___|_|   |_|  \___/|_|  \__, |\___|
                                              |___/
-                   v0.6.0 - Zero-Erasure Constraint Solver
+                   v0.7.0 - Zero-Erasure Constraint Solver
 
   0.000s ▶ Solving │ 14 entities │ 5 values │ scale 9.799 x 10^0
   0.001s ▶ Construction Heuristic started
@@ -384,9 +384,11 @@ Typical throughput: 300k-1M moves/second depending on constraint complexity for 
 
 ## Status
 
-**Current Version**: 0.6.0
+**Current Version**: 0.7.0
 
-### What's New in 0.6.0
+### What's New in 0.7.0
+
+- Release notes are managed in `CHANGELOG.md` by commit-and-tag workflow.
 
 - **Modern CLI templates**: The standalone CLI scaffolds standard variable and list variable projects via `solverforge new --standard ...` and `solverforge new --list ...`. The shipped templates use the config-driven `SolverManager` + `Solvable` + `solver.toml` API. No manual solver loops, no sub-crate imports — only the `solverforge` facade crate.
 - **Generated domain accessors**: `#[planning_solution]` generates a `{Name}ConstraintStreams` trait with typed `.field_name()` methods on `ConstraintFactory` — e.g., `factory.shifts()` instead of `factory.for_each(|s| &s.shifts)`
@@ -415,7 +417,7 @@ Typical throughput: 300k-1M moves/second depending on constraint complexity for 
 - Deleted `ShadowAwareScoreDirector`, `ScoreDirectorFactory` (dead wrappers)
 - Trimmed `ScoreDirector` trait: removed `variable_name` param, `before/after_entity_changed`, `trigger_variable_listeners`, `get_entity`; deleted dead pinning infrastructure
 - Eliminated `Box<dyn Acceptor<S>>` via `AnyAcceptor<S>` enum in `AcceptorBuilder`
-- Removed `run_solver_with_channel`; collapsed `basic.rs` solve overloads
+- Removed `run_solver_with_channel`; collapsed `standard.rs` solve overloads
 - Deleted dead `termination_fn` field/methods from `SolverScope`
 - Added `WIREFRAME.md` canonical API references for all crates
 
