@@ -30,7 +30,6 @@ pub mod realtime;
 pub mod run;
 pub mod scope;
 pub mod solver;
-pub mod standard;
 pub mod stats;
 pub mod termination;
 
@@ -141,7 +140,7 @@ pub use termination::{
 };
 
 pub use list_solver::{
-    build_list_construction, build_list_local_search, ListConstruction, ListLocalSearch, ListSpec,
+    build_list_construction, build_list_local_search, ListConstruction, ListLocalSearch,
 };
 pub use problem_spec::ProblemSpec;
 pub use run::{log_stock_solve_start, run_solver, run_stock_solver};

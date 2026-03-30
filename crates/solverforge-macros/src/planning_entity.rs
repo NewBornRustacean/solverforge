@@ -245,6 +245,86 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         })
         .collect();
 
+    let optional_planning_variables: Vec<_> = planning_variables
+        .iter()
+        .filter_map(|field| {
+            let field_name = field.ident.as_ref()?;
+            field_option_inner_type(&field.ty).map(|field_type| (field_name, field_type))
+        })
+        .collect();
+
+    let unassigned_filter_extension = if optional_planning_variables.len() == 1 {
+        let (field_name, field_type) = optional_planning_variables[0];
+        let predicate_name = syn::Ident::new(
+            &format!(
+                "__{}_{}_unassigned",
+                name.to_string().to_lowercase(),
+                field_name
+            ),
+            proc_macro2::Span::call_site(),
+        );
+        let filter_trait_name = syn::Ident::new(
+            &format!("{}UnassignedFilter", name),
+            proc_macro2::Span::call_site(),
+        );
+
+        quote! {
+            #[allow(non_snake_case)]
+            fn #predicate_name<Solution>(
+                _solution: &Solution,
+                entity: &#name,
+            ) -> bool
+            where
+                Solution: ::solverforge::__internal::PlanningSolution,
+            {
+                let value: &::core::option::Option<#field_type> = &entity.#field_name;
+                value.is_none()
+            }
+
+            pub trait #filter_trait_name<Sc: ::solverforge::Score + 'static, Solution, E, F> {
+                type Output;
+                fn unassigned(self) -> Self::Output;
+            }
+
+            impl<Sc, Solution, E, F> #filter_trait_name<Sc, Solution, E, F>
+                for ::solverforge::__internal::UniConstraintStream<Solution, #name, E, F, Sc>
+            where
+                Sc: ::solverforge::Score + 'static,
+                Solution: ::solverforge::__internal::PlanningSolution,
+                E: Fn(&Solution) -> &[#name] + Send + Sync,
+                F: ::solverforge::__internal::UniFilter<Solution, #name>,
+            {
+                type Output = ::solverforge::__internal::UniConstraintStream<
+                    Solution,
+                    #name,
+                    E,
+                    ::solverforge::__internal::AndUniFilter<
+                        F,
+                        ::solverforge::__internal::FnUniFilter<
+                            fn(&Solution, &#name) -> bool
+                        >,
+                    >,
+                    Sc,
+                >;
+
+                fn unassigned(self) -> Self::Output {
+                    let (extractor, filter) = self.into_parts();
+                    ::solverforge::__internal::UniConstraintStream::from_parts(
+                        extractor,
+                        ::solverforge::__internal::AndUniFilter::new(
+                            filter,
+                            ::solverforge::__internal::FnUniFilter::new(
+                                #predicate_name::<Solution> as fn(&Solution, &#name) -> bool
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     let list_variable_descriptors: Vec<_> = list_variables
         .iter()
         .map(|field| {
@@ -376,33 +456,40 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                 desc
             }
         }
+
+        #unassigned_filter_extension
     };
 
     Ok(expanded)
 }
 
 fn field_is_option_usize(ty: &syn::Type) -> bool {
-    let syn::Type::Path(type_path) = ty else {
-        return false;
-    };
-    let Some(segment) = type_path.path.segments.last() else {
-        return false;
-    };
-    if segment.ident != "Option" {
-        return false;
-    }
-    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return false;
-    };
-    let Some(syn::GenericArgument::Type(syn::Type::Path(inner_path))) = args.args.first() else {
-        return false;
-    };
-    inner_path
-        .path
-        .segments
-        .last()
+    field_option_inner_type(ty)
+        .and_then(|inner| {
+            let syn::Type::Path(inner_path) = inner else {
+                return None;
+            };
+            inner_path.path.segments.last()
+        })
         .map(|segment| segment.ident == "usize")
         .unwrap_or(false)
+}
+
+fn field_option_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(type_path) = ty else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    if segment.ident != "Option" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return None;
+    };
+    let Some(syn::GenericArgument::Type(inner)) = args.args.first() else {
+        return None;
+    };
+    Some(inner)
 }
 
 #[cfg(test)]
@@ -431,5 +518,7 @@ mod tests {
         assert!(expanded.contains("with_value_range (\"workers\")"));
         assert!(expanded.contains("with_id_field (stringify ! (id))"));
         assert!(expanded.contains("pub fn entity_descriptor"));
+        assert!(expanded.contains("pub trait TaskUnassignedFilter"));
+        assert!(expanded.contains("fn unassigned (self)"));
     }
 }

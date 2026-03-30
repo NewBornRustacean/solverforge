@@ -49,7 +49,7 @@ pub trait VrpSolution {
 }
 
 /* ============================================================================
-Free functions (callable as fn-pointer fields in ListSpec)
+Free functions (callable as fn-pointer fields in list stock hooks)
 ============================================================================
 */
 

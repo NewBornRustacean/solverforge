@@ -1,19 +1,15 @@
 use std::any::Any;
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
-use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
 use solverforge_config::{
-    ConstructionHeuristicConfig, ConstructionHeuristicType, MoveSelectorConfig, PhaseConfig,
-    SolverConfig, VndConfig,
+    ConstructionHeuristicConfig, ConstructionHeuristicType, MoveSelectorConfig, VndConfig,
 };
 use solverforge_core::domain::{
     SolutionDescriptor, UsizeEntityValueProvider, UsizeGetter, UsizeSetter, ValueRangeType,
 };
 use solverforge_core::score::{ParseableScore, Score};
-use solverforge_scoring::{ConstraintSet, Director, ScoreDirector, SolvableSolution};
-use tracing::info;
+use solverforge_scoring::Director;
 
 use crate::builder::{AcceptorBuilder, AnyAcceptor, AnyForager, ForagerBuilder};
 use crate::heuristic::r#move::Move;
@@ -27,10 +23,7 @@ use crate::phase::localsearch::{
     AcceptedCountForager, LocalSearchPhase, SimulatedAnnealingAcceptor,
 };
 use crate::phase::stock_vnd::StockVndPhase;
-use crate::problem_spec::ProblemSpec;
-use crate::run::AnyTermination;
 use crate::scope::{ProgressCallback, SolverScope};
-use crate::solver::{SolveResult, Solver};
 
 #[derive(Clone)]
 struct VariableBinding {
@@ -923,83 +916,4 @@ where
     };
 
     StockVndPhase::new(neighborhoods)
-}
-
-pub struct DescriptorStandardSpec;
-
-impl<S, C> ProblemSpec<S, C> for DescriptorStandardSpec
-where
-    S: solverforge_core::domain::PlanningSolution + SolvableSolution + 'static,
-    S::Score: Score + ParseableScore,
-    C: ConstraintSet<S, S::Score>,
-{
-    fn is_trivial(&self, solution: &S) -> bool {
-        let descriptor = S::descriptor();
-        descriptor
-            .total_entity_count(solution as &dyn Any)
-            .unwrap_or(0)
-            == 0
-    }
-
-    fn default_time_limit_secs(&self) -> u64 {
-        30
-    }
-
-    fn log_scale(&self, solution: &S) {
-        let descriptor = S::descriptor();
-        info!(
-            event = "solve_start",
-            entity_count = descriptor
-                .total_entity_count(solution as &dyn Any)
-                .unwrap_or(0),
-            variable_count = collect_bindings(&descriptor).len(),
-        );
-    }
-
-    fn build_and_solve(
-        self,
-        director: ScoreDirector<S, C>,
-        config: &SolverConfig,
-        time_limit: Duration,
-        termination: AnyTermination<S, ScoreDirector<S, C>>,
-        terminate: Option<&AtomicBool>,
-        callback: impl ProgressCallback<S>,
-    ) -> SolveResult<S> {
-        let solution_descriptor = director.solution_descriptor().clone();
-        let ls_config = config.phases.iter().find_map(|phase| {
-            if let PhaseConfig::LocalSearch(local_search) = phase {
-                Some(local_search)
-            } else {
-                None
-            }
-        });
-
-        let acceptor = ls_config
-            .and_then(|ls| ls.acceptor.as_ref())
-            .map(AcceptorBuilder::build::<S>)
-            .unwrap_or_else(|| {
-                AnyAcceptor::SimulatedAnnealing(SimulatedAnnealingAcceptor::default())
-            });
-
-        let forager = ls_config
-            .and_then(|ls| ls.forager.as_ref())
-            .map(|_| ForagerBuilder::build::<S>(ls_config.and_then(|ls| ls.forager.as_ref())))
-            .unwrap_or_else(|| AnyForager::AcceptedCount(AcceptedCountForager::new(1)));
-
-        let move_selector = build_descriptor_move_selector(
-            ls_config.and_then(|ls| ls.move_selector.as_ref()),
-            &solution_descriptor,
-        );
-        let local_search = DescriptorLocalSearch::new(move_selector, acceptor, forager, None);
-        let solver = Solver::new(((), SeedBestSolutionPhase, local_search))
-            .with_termination(termination)
-            .with_time_limit(time_limit)
-            .with_progress_callback(callback);
-
-        if let Some(flag) = terminate {
-            solver.with_terminate(flag).solve(director)
-        } else {
-            solver.solve(director)
-        }
-    }
 }

@@ -19,12 +19,6 @@ struct Route {
 }
 
 #[planning_solution]
-#[standard_variable_config(
-    entity_collection = "routes",
-    variable_field = "worker",
-    variable_type = "usize",
-    value_range = "workers"
-)]
 #[shadow_variable_updates(
     list_owner = "routes",
     list_field = "visits",

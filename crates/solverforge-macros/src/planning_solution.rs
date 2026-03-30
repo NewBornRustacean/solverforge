@@ -51,30 +51,6 @@ struct ShadowConfig {
     k_opt_feasible_fn: Option<String>,
 }
 
-/*
-Configuration for basic (non-list) planning variables.
-
-Used with `#[standard_variable_config(...)]` attribute to specify:
-- Which entity collection contains planning entities
-- Which field is the planning variable
-- The type of the variable
-- Where to get valid values from
-*/
-#[derive(Default)]
-struct StandardVariableConfig {
-    // Entity collection field name (e.g., "shifts")
-    entity_collection: Option<String>,
-
-    // Planning variable field name (e.g., "employee_idx")
-    variable_field: Option<String>,
-
-    // Variable type (e.g., "usize")
-    variable_type: Option<String>,
-
-    // Value range source - either a field name or "0..entity_count"
-    value_range: Option<String>,
-}
-
 // Parse the constraints path from #[solverforge_constraints_path = "path"]
 fn parse_constraints_path(attrs: &[syn::Attribute]) -> Option<String> {
     for attr in attrs {
@@ -119,19 +95,6 @@ fn parse_shadow_config(attrs: &[syn::Attribute]) -> ShadowConfig {
         config.k_opt_depot_fn = parse_attribute_string(attr, "k_opt_depot_fn");
         config.k_opt_distance_fn = parse_attribute_string(attr, "k_opt_distance_fn");
         config.k_opt_feasible_fn = parse_attribute_string(attr, "k_opt_feasible_fn");
-    }
-
-    config
-}
-
-fn parse_standard_variable_config(attrs: &[syn::Attribute]) -> StandardVariableConfig {
-    let mut config = StandardVariableConfig::default();
-
-    if let Some(attr) = get_attribute(attrs, "standard_variable_config") {
-        config.entity_collection = parse_attribute_string(attr, "entity_collection");
-        config.variable_field = parse_attribute_string(attr, "variable_field");
-        config.variable_type = parse_attribute_string(attr, "variable_type");
-        config.value_range = parse_attribute_string(attr, "value_range");
     }
 
     config
@@ -219,8 +182,6 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
     let shadow_config = parse_shadow_config(&input.attrs);
     let shadow_support_impl = generate_shadow_support(&shadow_config, name);
     let constraints_path = parse_constraints_path(&input.attrs);
-    let standard_config = parse_standard_variable_config(&input.attrs);
-
     let entity_count_arms: Vec<_> = fields
         .iter()
         .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
@@ -232,22 +193,15 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         .collect();
 
     let list_operations = generate_list_operations(&shadow_config, fields, name);
-    let standard_operations = generate_standard_variable_operations(&standard_config, fields, name);
     let stock_phase_support =
         generate_stock_phase_support(&shadow_config, fields, &constraints_path, name);
     let standard_stock_phase_support =
         generate_standard_stock_phase_support(&shadow_config, &constraints_path, name);
-    let stock_solve_internal = generate_stock_solve_internal(
-        &shadow_config,
-        &standard_config,
-        fields,
-        &constraints_path,
-        name,
-    );
-    let solvable_solution_impl =
-        generate_solvable_solution(&shadow_config, &standard_config, name, &constraints_path);
+    let stock_solve_internal =
+        generate_stock_solve_internal(&shadow_config, fields, &constraints_path, name);
+    let solvable_solution_impl = generate_solvable_solution(name, &constraints_path);
 
-    let stream_extensions = generate_constraint_stream_extensions(fields, &standard_config, name);
+    let stream_extensions = generate_constraint_stream_extensions(fields, name);
 
     let expanded = quote! {
         impl #impl_generics ::solverforge::__internal::PlanningSolution for #name #ty_generics #where_clause {
@@ -276,7 +230,6 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             }
 
             #list_operations
-            #standard_operations
             #stock_solve_internal
         }
 
@@ -460,88 +413,8 @@ fn generate_list_operations(
     }
 }
 
-fn generate_standard_variable_operations(
-    config: &StandardVariableConfig,
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-    _solution_name: &Ident,
-) -> TokenStream {
-    // ALL FOUR FIELDS REQUIRED FOR BASIC VARIABLE SUPPORT
-    let (entity_collection, variable_field, variable_type, value_range) = match (
-        &config.entity_collection,
-        &config.variable_field,
-        &config.variable_type,
-        &config.value_range,
-    ) {
-        (Some(ec), Some(vf), Some(vt), Some(vr)) => (ec, vf, vt, vr),
-        _ => return TokenStream::new(),
-    };
-
-    let entity_collection_ident = Ident::new(entity_collection, proc_macro2::Span::call_site());
-    let variable_field_ident = Ident::new(variable_field, proc_macro2::Span::call_site());
-    let variable_type_ident = Ident::new(variable_type, proc_macro2::Span::call_site());
-    let value_range_ident = Ident::new(value_range, proc_macro2::Span::call_site());
-    let variable_field_str = variable_field.as_str();
-
-    // Find descriptor index for the entity collection
-    let entity_fields: Vec<_> = fields
-        .iter()
-        .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
-        .collect();
-
-    let descriptor_index = entity_fields
-        .iter()
-        .position(|f| {
-            f.ident
-                .as_ref()
-                .is_some_and(|ident| ident == entity_collection)
-        })
-        .expect("entity_collection must be a planning_entity_collection field");
-
-    let descriptor_index_lit = syn::LitInt::new(
-        &descriptor_index.to_string(),
-        proc_macro2::Span::call_site(),
-    );
-
-    quote! {
-        #[inline]
-        pub fn standard_get_variable(s: &Self, entity_idx: usize) -> Option<#variable_type_ident> {
-            s.#entity_collection_ident
-                .get(entity_idx)
-                .and_then(|e| e.#variable_field_ident)
-        }
-
-        #[inline]
-        pub fn standard_set_variable(s: &mut Self, entity_idx: usize, v: Option<#variable_type_ident>) {
-            if let Some(e) = s.#entity_collection_ident.get_mut(entity_idx) {
-                e.#variable_field_ident = v;
-            }
-        }
-
-        #[inline]
-        pub fn standard_value_count(s: &Self) -> usize {
-            s.#value_range_ident.len()
-        }
-
-        #[inline]
-        pub fn standard_entity_count(s: &Self) -> usize {
-            s.#entity_collection_ident.len()
-        }
-
-        #[inline]
-        pub const fn standard_variable_descriptor_index() -> usize {
-            #descriptor_index_lit
-        }
-
-        #[inline]
-        pub const fn standard_variable_field_name() -> &'static str {
-            #variable_field_str
-        }
-    }
-}
-
 fn generate_stock_solve_internal(
     shadow_config: &ShadowConfig,
-    _standard_config: &StandardVariableConfig,
     _fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     constraints_path: &Option<String>,
     _solution_name: &Ident,
@@ -1013,20 +886,9 @@ fn option_fn_expr(path: &Option<String>, label: &str) -> syn::Expr {
 }
 
 fn generate_solvable_solution(
-    shadow_config: &ShadowConfig,
-    standard_config: &StandardVariableConfig,
     solution_name: &Ident,
     constraints_path: &Option<String>,
 ) -> TokenStream {
-    let has_list_config = shadow_config.list_owner.is_some();
-    let has_standard_config = standard_config.entity_collection.is_some();
-    let has_descriptor_standard =
-        !has_list_config && !has_standard_config && constraints_path.is_some();
-
-    if !has_list_config && !has_standard_config && !has_descriptor_standard {
-        return TokenStream::new();
-    }
-
     let solvable_solution_impl = quote! {
         impl ::solverforge::__internal::SolvableSolution for #solution_name {
             fn descriptor() -> ::solverforge::__internal::SolutionDescriptor {
@@ -1231,7 +1093,6 @@ fn generate_shadow_support(config: &ShadowConfig, solution_name: &Ident) -> Toke
 
 fn generate_constraint_stream_extensions(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-    standard_config: &StandardVariableConfig,
     solution_name: &Ident,
 ) -> TokenStream {
     // Collect entity collection fields
@@ -1291,7 +1152,7 @@ fn generate_constraint_stream_extensions(
         proc_macro2::Span::call_site(),
     );
 
-    let mut result = quote! {
+    quote! {
         pub trait #trait_name<Sc: ::solverforge::Score + 'static> {
             #(#accessor_methods)*
         }
@@ -1301,98 +1162,7 @@ fn generate_constraint_stream_extensions(
         {
             #(#accessor_impls)*
         }
-    };
-
-    // Generate `.unassigned()` filter for standard_variable_config
-    if let (Some(entity_collection), Some(variable_field)) = (
-        &standard_config.entity_collection,
-        &standard_config.variable_field,
-    ) {
-        // Find the entity type for this collection
-        let entity_field = fields
-            .iter()
-            .find(|f| f.ident.as_ref().map(|i| i.to_string()).as_ref() == Some(entity_collection));
-
-        if let Some(ef) = entity_field {
-            if let Some(entity_type) = extract_collection_inner_type(&ef.ty) {
-                let entity_collection_ident =
-                    Ident::new(entity_collection, proc_macro2::Span::call_site());
-                let variable_field_ident =
-                    Ident::new(variable_field, proc_macro2::Span::call_site());
-
-                let unassigned_fn_name = Ident::new(
-                    &format!(
-                        "__{}__{}_unassigned",
-                        solution_name.to_string().to_lowercase(),
-                        entity_collection
-                    ),
-                    proc_macro2::Span::call_site(),
-                );
-
-                // Derive a simple name for the unassigned filter trait
-                let entity_type_name = if let syn::Type::Path(tp) = entity_type {
-                    tp.path
-                        .segments
-                        .last()
-                        .map(|s| s.ident.to_string())
-                        .unwrap_or_else(|| "Entity".to_string())
-                } else {
-                    "Entity".to_string()
-                };
-                let unassigned_filter_trait = Ident::new(
-                    &format!("{}UnassignedFilter", entity_type_name),
-                    proc_macro2::Span::call_site(),
-                );
-
-                result = quote! {
-                    #result
-
-                    #[allow(non_snake_case)]
-                    fn #unassigned_fn_name(_s: &#solution_name, entity: &#entity_type) -> bool {
-                        entity.#variable_field_ident.is_none()
-                    }
-
-                    pub trait #unassigned_filter_trait<Sc: ::solverforge::Score + 'static, E, F> {
-                        type Output;
-                        fn unassigned(self) -> Self::Output;
-                    }
-
-                    impl<Sc, E, F> #unassigned_filter_trait<Sc, E, F>
-                        for ::solverforge::__internal::UniConstraintStream<#solution_name, #entity_type, E, F, Sc>
-                    where
-                        Sc: ::solverforge::Score + 'static,
-                        E: Fn(&#solution_name) -> &[#entity_type] + Send + Sync,
-                        F: ::solverforge::__internal::UniFilter<#solution_name, #entity_type>,
-                    {
-                        type Output = ::solverforge::__internal::UniConstraintStream<
-                            #solution_name,
-                            #entity_type,
-                            E,
-                            ::solverforge::__internal::AndUniFilter<F,
-                                ::solverforge::__internal::FnUniFilter<fn(&#solution_name, &#entity_type) -> bool>>,
-                            Sc>;
-
-                        fn unassigned(self) -> Self::Output {
-                            let (extractor, filter) = self.into_parts();
-                            ::solverforge::__internal::UniConstraintStream::from_parts(
-                                extractor,
-                                ::solverforge::__internal::AndUniFilter::new(
-                                    filter,
-                                    ::solverforge::__internal::FnUniFilter::new(
-                                        #unassigned_fn_name as fn(&#solution_name, &#entity_type) -> bool
-                                    ),
-                                ),
-                            )
-                        }
-                    }
-                };
-
-                let _ = entity_collection_ident; // suppress unused warning
-            }
-        }
     }
-
-    result
 }
 
 fn extract_option_inner_type(ty: &syn::Type) -> Result<&syn::Type, Error> {
@@ -1434,12 +1204,6 @@ mod tests {
     fn golden_solution_expansion_emits_constraint_streams_and_descriptor() {
         let input = parse_quote! {
             #[solverforge_constraints_path = "crate::constraints::create_constraints"]
-            #[standard_variable_config(
-                entity_collection = "tasks",
-                variable_field = "worker_idx",
-                variable_type = "usize",
-                value_range = "workers"
-            )]
             struct Plan {
                 #[problem_fact_collection]
                 workers: Vec<Worker>,
@@ -1456,7 +1220,6 @@ mod tests {
 
         assert!(expanded.contains("impl :: solverforge :: __internal :: PlanningSolution for Plan"));
         assert!(expanded.contains("pub trait PlanConstraintStreams"));
-        assert!(expanded.contains("pub trait TaskUnassignedFilter"));
         assert!(expanded.contains(
             "pub fn descriptor () -> :: solverforge :: __internal :: SolutionDescriptor"
         ));

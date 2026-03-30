@@ -50,10 +50,13 @@ fn test_soft_score_one_soft() {
 #[test]
 fn test_constraint_stream_accessors_compile() {
     use ScheduleConstraintStreams;
+    use ShiftUnassignedFilter;
 
     // Test that the generated .shifts() and .employees() methods exist and compile.
     let factory = ConstraintFactory::<Schedule, HardSoftScore>::new();
     let _shifts_stream = factory.shifts();
+    let factory3 = ConstraintFactory::<Schedule, HardSoftScore>::new();
+    let _unassigned_stream = factory3.shifts().unassigned();
 
     let factory2 = ConstraintFactory::<Schedule, HardSoftScore>::new();
     let _employees_stream = factory2.employees();

@@ -115,7 +115,6 @@ pub fn derive_planning_entity(input: TokenStream) -> TokenStream {
         planning_score,
         value_range_provider,
         shadow_variable_updates,
-        standard_variable_config,
         solverforge_constraints_path
     )
 )]

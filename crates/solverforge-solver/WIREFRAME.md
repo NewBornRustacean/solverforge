@@ -23,8 +23,7 @@ Solver engine: phases, moves, selectors, acceptors, foragers, termination, and s
 src/
 ├── lib.rs                               — Crate root; module declarations, re-exports
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
-├── standard.rs                          — Legacy single-variable standard stock runtime
-├── list_solver.rs                       — ListSpec, list construction/local-search builders, list phase enums
+├── list_solver.rs                       — List construction/local-search builders, list phase enums
 ├── mixed_stock.rs                       — Mixed stock move envelope, selector builder, local-search/VND builders
 ├── run.rs                               — AnyTermination, build_termination, run_solver(), run_stock_solver()
 ├── problem_spec.rs                      — ProblemSpec trait
@@ -712,15 +711,11 @@ Aggregate and per-phase metrics: step count, moves evaluated/accepted, score cal
 
 ### `ProblemSpec` — `problem_spec.rs`
 
-Trait that abstracts over basic and list-variable problems for config-driven solver construction.
-
-### `standard.rs`
-
-Legacy single-variable stock runtime kept for the old explicit `ProblemSpec` path.
+Trait for user-authored low-level problem specs passed to `run_solver()`.
 
 ### `list_solver.rs`
 
-Public stock helpers: `ListSpec`, `ListConstruction<S, V>`, `ListLocalSearch<S, V, DM, IDM>`, `build_list_construction()`, `build_list_local_search()`
+Public stock helpers: `ListConstruction<S, V>`, `ListLocalSearch<S, V, DM, IDM>`, `build_list_construction()`, `build_list_local_search()`
 
 ### `mixed_stock.rs`
 
@@ -732,7 +727,7 @@ Public stock helpers: `MixedStockMove<S, V>`, `MixedNeighborhood<S, V, DM, IDM>`
 
 ### `run_solver()` — `run.rs`
 
-Unified convenience function covering both basic and list-variable problems. Accepts `terminate: Option<&AtomicBool>` and `sender: mpsc::UnboundedSender<(S, S::Score)>` for external control and solution streaming. Replaces the former per-problem-type functions.
+Unified low-level solve entrypoint for custom `ProblemSpec` implementations. Accepts `terminate: Option<&AtomicBool>` and `sender: mpsc::UnboundedSender<(S, S::Score)>` for external control and solution streaming.
 
 ## Architectural Notes
 

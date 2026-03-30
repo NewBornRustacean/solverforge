@@ -1,9 +1,9 @@
-/* List variable solver for routing and scheduling problems.
+/* List stock helpers for routing and scheduling problems.
 
-This module provides `ListSpec` for problems with list variables
-(e.g., vehicle routes, shift schedules). The solver configuration
-(construction type, move selectors, acceptor, forager, termination) is
-driven by `solver.toml`.
+This module provides the concrete list construction and local-search
+building blocks used by the unified stock runtime. The solver
+configuration (construction type, move selectors, acceptor, forager,
+termination) is driven by `solver.toml`.
 
 Logging levels:
 - **INFO**: Solver start/end, phase summaries, problem scale
@@ -11,16 +11,10 @@ Logging levels:
 - **TRACE**: Move evaluation details
 */
 
-use std::fmt;
-use std::marker::PhantomData;
-use std::sync::atomic::AtomicBool;
-use std::time::Duration;
-
 use solverforge_config::{ConstructionHeuristicType, PhaseConfig, SolverConfig};
 use solverforge_core::domain::PlanningSolution;
 use solverforge_core::score::{ParseableScore, Score};
-use solverforge_scoring::{ConstraintSet, ScoreDirector};
-use tracing::info;
+use std::fmt;
 
 use crate::builder::list_selector::ListLeafSelector;
 use crate::builder::{
@@ -33,10 +27,6 @@ use crate::manager::{
     ListCheapestInsertionPhase, ListClarkeWrightPhase, ListKOptPhase, ListRegretInsertionPhase,
 };
 use crate::phase::localsearch::{AcceptedCountForager, LateAcceptanceAcceptor, LocalSearchPhase};
-use crate::problem_spec::ProblemSpec;
-use crate::run::AnyTermination;
-use crate::scope::ProgressCallback;
-use crate::solver::{SolveResult, Solver};
 
 // Type alias for the config-driven list local search phase
 type ConfigListLocalSearch<S, V, DM, IDM> = LocalSearchPhase<
@@ -114,220 +104,6 @@ where
                 write!(f, "ListConstruction::ClarkeWright({phase:?})")
             }
             Self::KOpt(phase) => write!(f, "ListConstruction::KOpt({phase:?})"),
-        }
-    }
-}
-
-/// Problem specification for list variable problems.
-///
-/// Passed to `run_solver` to provide problem-specific construction and local
-/// search phases for solutions using `#[shadow_variable_updates]` (list variables).
-pub struct ListSpec<S, V, DM, IDM> {
-    // List operation function pointers
-    pub list_len: fn(&S, usize) -> usize,
-    pub list_remove: fn(&mut S, usize, usize) -> Option<V>,
-    pub list_insert: fn(&mut S, usize, usize, V),
-    pub list_get: fn(&S, usize, usize) -> Option<V>,
-    pub list_set: fn(&mut S, usize, usize, V),
-    pub list_reverse: fn(&mut S, usize, usize, usize),
-    pub sublist_remove: fn(&mut S, usize, usize, usize) -> Vec<V>,
-    pub sublist_insert: fn(&mut S, usize, usize, Vec<V>),
-    pub ruin_remove: fn(&mut S, usize, usize) -> V,
-    pub ruin_insert: fn(&mut S, usize, usize, V),
-    // Construction function pointers
-    pub element_count: fn(&S) -> usize,
-    pub get_assigned: fn(&S) -> Vec<V>,
-    pub entity_count: fn(&S) -> usize,
-    pub list_remove_for_construction: fn(&mut S, usize, usize) -> V,
-    pub index_to_element: fn(&S, usize) -> V,
-    // Distance meters
-    pub cross_distance_meter: DM,
-    pub intra_distance_meter: IDM,
-    // Clarke-Wright fields (all None if not using Clarke-Wright construction)
-    pub depot_fn: Option<fn(&S) -> usize>,
-    pub distance_fn: Option<fn(&S, usize, usize) -> i64>,
-    pub element_load_fn: Option<fn(&S, usize) -> i64>,
-    pub capacity_fn: Option<fn(&S) -> i64>,
-    pub assign_route_fn: Option<fn(&mut S, usize, Vec<V>)>,
-    pub merge_feasible_fn: Option<fn(&S, &[usize]) -> bool>,
-    // KOpt fields (all None if not using KOpt polishing)
-    pub k_opt_get_route: Option<fn(&S, usize) -> Vec<usize>>,
-    pub k_opt_set_route: Option<fn(&mut S, usize, Vec<usize>)>,
-    pub k_opt_depot_fn: Option<fn(&S, usize) -> usize>,
-    pub k_opt_distance_fn: Option<fn(&S, usize, usize) -> i64>,
-    pub k_opt_feasible_fn: Option<fn(&S, usize, &[usize]) -> bool>,
-    // Metadata
-    pub variable_name: &'static str,
-    pub descriptor_index: usize,
-    pub _phantom: PhantomData<fn() -> S>,
-}
-
-impl<S, V, C, DM, IDM> ProblemSpec<S, C> for ListSpec<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    S::Score: Score + ParseableScore,
-    V: Copy + PartialEq + Eq + std::hash::Hash + Send + Sync + fmt::Debug + 'static,
-    C: ConstraintSet<S, S::Score>,
-    DM: CrossEntityDistanceMeter<S> + Clone,
-    IDM: CrossEntityDistanceMeter<S> + Clone + 'static,
-{
-    fn is_trivial(&self, solution: &S) -> bool {
-        (self.entity_count)(solution) == 0
-    }
-
-    fn default_time_limit_secs(&self) -> u64 {
-        60
-    }
-
-    fn log_scale(&self, solution: &S) {
-        info!(
-            event = "solve_start",
-            entity_count = (self.entity_count)(solution),
-            element_count = (self.element_count)(solution),
-        );
-    }
-
-    fn build_and_solve(
-        self,
-        director: ScoreDirector<S, C>,
-        config: &SolverConfig,
-        time_limit: Duration,
-        termination: AnyTermination<S, ScoreDirector<S, C>>,
-        terminate: Option<&AtomicBool>,
-        callback: impl ProgressCallback<S>,
-    ) -> SolveResult<S> {
-        let construction = build_list_construction::<S, V>(
-            config,
-            self.element_count,
-            self.get_assigned,
-            self.entity_count,
-            self.list_len,
-            self.list_insert,
-            self.list_remove_for_construction,
-            self.index_to_element,
-            self.descriptor_index,
-            self.depot_fn,
-            self.distance_fn,
-            self.element_load_fn,
-            self.capacity_fn,
-            self.assign_route_fn,
-            self.merge_feasible_fn,
-            self.k_opt_get_route,
-            self.k_opt_set_route,
-            self.k_opt_depot_fn,
-            self.k_opt_distance_fn,
-            self.k_opt_feasible_fn,
-        );
-
-        let ctx = ListContext::new(
-            self.list_len,
-            self.list_remove,
-            self.list_insert,
-            self.list_get,
-            self.list_set,
-            self.list_reverse,
-            self.sublist_remove,
-            self.sublist_insert,
-            self.ruin_remove,
-            self.ruin_insert,
-            self.entity_count,
-            self.cross_distance_meter,
-            self.intra_distance_meter,
-            self.variable_name,
-            self.descriptor_index,
-        );
-
-        let local_search = build_list_local_search::<S, V, DM, IDM>(config, &ctx);
-
-        match (construction, local_search) {
-            (ListConstruction::CheapestInsertion(c), ListLocalSearch::Default(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
-            (ListConstruction::CheapestInsertion(c), ListLocalSearch::Config(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
-            (ListConstruction::RegretInsertion(c), ListLocalSearch::Default(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
-            (ListConstruction::RegretInsertion(c), ListLocalSearch::Config(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
-            (ListConstruction::ClarkeWright(c), ListLocalSearch::Default(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
-            (ListConstruction::ClarkeWright(c), ListLocalSearch::Config(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
-            (ListConstruction::KOpt(c), ListLocalSearch::Default(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
-            (ListConstruction::KOpt(c), ListLocalSearch::Config(ls)) => {
-                let solver = Solver::new(((), c, ls))
-                    .with_termination(termination)
-                    .with_time_limit(time_limit)
-                    .with_progress_callback(callback);
-                if let Some(flag) = terminate {
-                    solver.with_terminate(flag).solve(director)
-                } else {
-                    solver.solve(director)
-                }
-            }
         }
     }
 }

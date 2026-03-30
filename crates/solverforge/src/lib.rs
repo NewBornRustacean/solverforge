@@ -156,7 +156,6 @@ pub mod __internal {
 
     // Solver infrastructure
     pub use solverforge_solver::builder::ListContext;
-    pub use solverforge_solver::descriptor_standard::DescriptorStandardSpec;
     pub use solverforge_solver::heuristic::selector::{
         DefaultDistanceMeter, FromSolutionEntitySelector,
     };
@@ -164,7 +163,6 @@ pub mod __internal {
         KOptPhaseBuilder, ListConstructionPhaseBuilder, PhaseFactory, SolverFactory,
     };
     pub use solverforge_solver::scope::{ProgressCallback, SolverScope};
-    pub use solverforge_solver::standard::StandardSpec;
     pub use solverforge_solver::{
         build_descriptor_construction, build_descriptor_local_search,
         build_descriptor_move_selector, build_descriptor_vnd, build_list_construction,
