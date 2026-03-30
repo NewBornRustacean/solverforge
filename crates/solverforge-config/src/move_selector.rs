@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct VariableTargetConfig {
+    pub entity_class: Option<String>,
+    pub variable_name: Option<String>,
+}
+
 // Move selector configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -48,24 +55,24 @@ pub enum MoveSelectorConfig {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ChangeMoveConfig {
-    // Entity class filter.
-    pub entity_class: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 // Swap move configuration.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SwapMoveConfig {
-    // Entity class filter.
-    pub entity_class: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 // Configuration for `ListChangeMoveSelector`.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ListChangeMoveConfig {
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 // Configuration for `NearbyListChangeMoveSelector`.
@@ -74,15 +81,15 @@ pub struct ListChangeMoveConfig {
 pub struct NearbyListChangeMoveConfig {
     // Maximum nearby destination positions to consider per source element.
     pub max_nearby: usize,
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 impl Default for NearbyListChangeMoveConfig {
     fn default() -> Self {
         Self {
             max_nearby: 10,
-            variable_name: None,
+            target: VariableTargetConfig::default(),
         }
     }
 }
@@ -91,8 +98,8 @@ impl Default for NearbyListChangeMoveConfig {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ListSwapMoveConfig {
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 // Configuration for `NearbyListSwapMoveSelector`.
@@ -101,15 +108,15 @@ pub struct ListSwapMoveConfig {
 pub struct NearbyListSwapMoveConfig {
     // Maximum nearby swap partners to consider per source element.
     pub max_nearby: usize,
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 impl Default for NearbyListSwapMoveConfig {
     fn default() -> Self {
         Self {
             max_nearby: 10,
-            variable_name: None,
+            target: VariableTargetConfig::default(),
         }
     }
 }
@@ -122,8 +129,8 @@ pub struct SubListChangeMoveConfig {
     pub min_sublist_size: usize,
     // Maximum segment size (inclusive). Default: 3.
     pub max_sublist_size: usize,
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 impl Default for SubListChangeMoveConfig {
@@ -131,7 +138,7 @@ impl Default for SubListChangeMoveConfig {
         Self {
             min_sublist_size: 1,
             max_sublist_size: 3,
-            variable_name: None,
+            target: VariableTargetConfig::default(),
         }
     }
 }
@@ -144,8 +151,8 @@ pub struct SubListSwapMoveConfig {
     pub min_sublist_size: usize,
     // Maximum segment size (inclusive). Default: 3.
     pub max_sublist_size: usize,
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 impl Default for SubListSwapMoveConfig {
@@ -153,7 +160,7 @@ impl Default for SubListSwapMoveConfig {
         Self {
             min_sublist_size: 1,
             max_sublist_size: 3,
-            variable_name: None,
+            target: VariableTargetConfig::default(),
         }
     }
 }
@@ -162,8 +169,8 @@ impl Default for SubListSwapMoveConfig {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ListReverseMoveConfig {
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 // Configuration for `KOptMoveSelector`.
@@ -177,8 +184,8 @@ pub struct KOptMoveSelectorConfig {
     // Maximum nearby positions to consider per cut. Default: 0 (full enumeration).
     // When > 0, uses distance-pruned NearbyKOptMoveSelector instead of full KOptMoveSelector.
     pub max_nearby: usize,
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 impl Default for KOptMoveSelectorConfig {
@@ -187,7 +194,7 @@ impl Default for KOptMoveSelectorConfig {
             k: 3,
             min_segment_len: 1,
             max_nearby: 0,
-            variable_name: None,
+            target: VariableTargetConfig::default(),
         }
     }
 }
@@ -202,8 +209,8 @@ pub struct ListRuinMoveSelectorConfig {
     pub max_ruin_count: usize,
     // Number of ruin moves to generate per step. Default: 10.
     pub moves_per_step: Option<usize>,
-    // Variable name filter. If None, applies to all list variables.
-    pub variable_name: Option<String>,
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
 }
 
 impl Default for ListRuinMoveSelectorConfig {
@@ -212,7 +219,7 @@ impl Default for ListRuinMoveSelectorConfig {
             min_ruin_count: 2,
             max_ruin_count: 5,
             moves_per_step: None,
-            variable_name: None,
+            target: VariableTargetConfig::default(),
         }
     }
 }

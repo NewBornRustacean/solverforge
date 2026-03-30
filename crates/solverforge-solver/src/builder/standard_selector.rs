@@ -96,6 +96,10 @@ impl StandardMoveSelectorBuilder {
             }
             Some(cfg) => Self::collect_leaves(cfg, ctx, &mut leaves),
         }
+        assert!(
+            !leaves.is_empty(),
+            "stock move selector configuration produced no standard neighborhoods"
+        );
         VecUnionSelector::new(leaves)
     }
 
@@ -114,11 +118,19 @@ impl StandardMoveSelectorBuilder {
                     Self::collect_leaves(child, ctx, out);
                 }
             }
-            // All other variants are list selectors — ignore for basic solver
-            _ => {
-                // Default to change + swap if unknown selector type is specified
-                Self::push_change(out, ctx);
-                Self::push_swap(out, ctx);
+            MoveSelectorConfig::ListChangeMoveSelector(_)
+            | MoveSelectorConfig::NearbyListChangeMoveSelector(_)
+            | MoveSelectorConfig::ListSwapMoveSelector(_)
+            | MoveSelectorConfig::NearbyListSwapMoveSelector(_)
+            | MoveSelectorConfig::SubListChangeMoveSelector(_)
+            | MoveSelectorConfig::SubListSwapMoveSelector(_)
+            | MoveSelectorConfig::ListReverseMoveSelector(_)
+            | MoveSelectorConfig::KOptMoveSelector(_)
+            | MoveSelectorConfig::ListRuinMoveSelector(_) => {
+                panic!("list move selector configured against a standard-variable stock context");
+            }
+            MoveSelectorConfig::CartesianProductMoveSelector(_) => {
+                panic!("cartesian_product move selectors are not supported in stock solving");
             }
         }
     }

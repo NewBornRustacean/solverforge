@@ -19,7 +19,7 @@ src/
 ├── lib.rs                — Crate root; attribute macros, derive macro entry points, shared helpers
 ├── planning_entity.rs    — PlanningEntityImpl derive: PlanningEntity trait, PlanningId, entity_descriptor()
 ├── planning_solution.rs  — PlanningSolutionImpl derive: PlanningSolution trait, descriptor(), VariableOperations, shadow support, Solvable/Analyzable
-├── problem_fact.rs       — ProblemFactImpl derive: PlanningId for problem facts
+├── problem_fact.rs       — ProblemFactImpl derive: ProblemFact, PlanningId, problem_fact_descriptor()
 ```
 
 ## Attribute Macros (proc_macro_attribute)
@@ -44,7 +44,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `#[planning_id]` — marks the unique ID field
 - `#[planning_variable(allows_unassigned = bool, chained = bool, value_range_provider = "name")]` — genuine planning variable
   `value_range = "name"` is accepted as an alias for `value_range_provider`
-- `#[planning_list_variable]` — list planning variable
+- `#[planning_list_variable(...)]` — list planning variable
 - `#[planning_pin]` — boolean field controlling entity pinning
 - `#[inverse_relation_shadow_variable(source_variable_name = "field")]` — inverse relation shadow
 - `#[previous_element_shadow_variable(source_variable_name = "field")]` — previous element shadow
@@ -65,8 +65,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `#[value_range_provider]` — value range source
 
 **Consumed attributes on struct:**
-- `#[shadow_variable_updates(...)]` — configures shadow variable update generation
-- `#[standard_variable_config(...)]` — configures standard variable operations
+- `#[shadow_variable_updates(...)]` — configures shadow variable update generation only
 - `#[solverforge_constraints_path = "path"]` — path to constraint factory function
 
 **`#[shadow_variable_updates]` parameters:**
@@ -84,18 +83,20 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `distance_meter = "path"` — optional cross-entity distance meter type (defaults to `DefaultDistanceMeter`)
 - `intra_distance_meter = "path"` — optional intra-entity distance meter type (defaults to `DefaultDistanceMeter`)
 
-**`#[standard_variable_config]` parameters:**
-- `entity_collection = "field"` — entity collection field name
-- `variable_field = "field"` — planning variable field name on entity
-- `variable_type = "Type"` — variable type name
-- `value_range = "field"` — value range source field name
+**`#[planning_list_variable]` stock parameters:**
+- `element_collection = "field"` — solution field with all list elements
+- `distance_meter = "path"` — optional cross-entity distance meter type
+- `intra_distance_meter = "path"` — optional intra-entity distance meter type
+- `merge_feasible_fn = "path"` — optional Clarke-Wright feasibility gate
+- `cw_depot_fn`, `cw_distance_fn`, `cw_element_load_fn`, `cw_capacity_fn`, `cw_assign_route_fn` — Clarke-Wright hooks
+- `k_opt_get_route`, `k_opt_set_route`, `k_opt_depot_fn`, `k_opt_distance_fn`, `k_opt_feasible_fn` — K-opt hooks
 
 **Generated code:**
 - `impl PlanningSolution for T` — `type Score`, `score()`, `set_score()`
 - `impl T { pub fn descriptor() -> SolutionDescriptor }` — builds full descriptor with entity extractors and fact extractors, reusing entity-generated descriptors so field-level variable metadata is preserved
 - `impl T { pub fn entity_count(&Self, descriptor_index: usize) -> usize }` — entity count by descriptor index
-- List operations (when shadow_variable_updates configured): `list_len()`, `list_len_static()`, `list_remove()`, `list_insert()`, `list_get()`, `list_set()`, `list_reverse()`, `sublist_remove()`, `sublist_insert()`, `ruin_remove()`, `ruin_insert()`, `list_remove_for_construction()`, `index_to_element_static()`, `list_variable_descriptor_index()`, `element_count()`, `assigned_elements()`, `n_entities()`, `assign_element()`, `finalize_all()`
-- Standard variable operations (when standard_variable_config configured): `standard_get_variable()`, `standard_set_variable()`, `standard_value_count()`, `standard_entity_count()`, `standard_variable_descriptor_index()`, `standard_variable_field_name()`, `finalize_all()`
+- List operations (when list shadow support is configured): `list_len()`, `list_len_static()`, `list_remove()`, `list_insert()`, `list_get()`, `list_set()`, `list_reverse()`, `sublist_remove()`, `sublist_insert()`, `ruin_remove()`, `ruin_insert()`, `list_remove_for_construction()`, `index_to_element_static()`, `list_variable_descriptor_index()`, `element_count()`, `assigned_elements()`, `n_entities()`, `assign_element()`
+- Standard variable operations (legacy stock path only): `standard_get_variable()`, `standard_set_variable()`, `standard_value_count()`, `standard_entity_count()`, `standard_variable_descriptor_index()`, `standard_variable_field_name()`
 - `impl ShadowVariableSupport for T` — `update_entity_shadows()` (no-op if no shadow config; generates inverse/previous/next/cascading/aggregate/compute updates otherwise)
 - `impl SolvableSolution for T` (when any variable config present) — delegates to `descriptor()` and `entity_count()`
 - `impl Solvable for T` (when constraints path specified) — `solve()` calls `solve_internal()`
@@ -110,7 +111,9 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `#[planning_id]` — marks the unique ID field
 
 **Generated code:**
+- `impl ProblemFact for T` — `as_any()`
 - `impl PlanningId for T` (if `#[planning_id]` present) — same as entity version
+- `impl T { pub fn problem_fact_descriptor(solution_field: &'static str) -> ProblemFactDescriptor }`
 
 ## Shared Helper Functions (lib.rs, private)
 

@@ -61,12 +61,12 @@ pub use move_selector::{
     CartesianProductConfig, ChangeMoveConfig, KOptMoveSelectorConfig, ListChangeMoveConfig,
     ListReverseMoveConfig, ListRuinMoveSelectorConfig, ListSwapMoveConfig, MoveSelectorConfig,
     NearbyListChangeMoveConfig, NearbyListSwapMoveConfig, SubListChangeMoveConfig,
-    SubListSwapMoveConfig, SwapMoveConfig, UnionMoveSelectorConfig,
+    SubListSwapMoveConfig, SwapMoveConfig, UnionMoveSelectorConfig, VariableTargetConfig,
 };
 pub use phase::{
     ConstructionHeuristicConfig, ConstructionHeuristicType, CustomPhaseConfig,
     ExhaustiveSearchConfig, ExhaustiveSearchType, LocalSearchConfig, PartitionedSearchConfig,
-    PhaseConfig,
+    PhaseConfig, VndConfig,
 };
 pub use solver_config::{EnvironmentMode, MoveThreadCount, SolverConfig, SolverConfigOverride};
 pub use termination::TerminationConfig;

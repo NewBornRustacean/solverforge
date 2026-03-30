@@ -5,6 +5,7 @@ variable and list variable problems via the `ProblemSpec` trait.
 */
 
 use std::fmt;
+use std::marker::PhantomData;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
@@ -16,8 +17,10 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use crate::manager::SolverEvent;
+use crate::phase::{Phase, PhaseSequence};
 use crate::problem_spec::ProblemSpec;
 use crate::scope::{ProgressCallback, SolverProgressKind, SolverProgressRef, SolverScope};
+use crate::solver::Solver;
 use crate::termination::{
     BestScoreTermination, OrTermination, StepCountTermination, Termination, TimeTermination,
     UnimprovedStepCountTermination, UnimprovedTimeTermination,
@@ -33,6 +36,49 @@ pub enum AnyTermination<S: PlanningSolution, D: Director<S>> {
     WithStepCount(OrTermination<(TimeTermination, StepCountTermination), S, D>),
     WithUnimprovedStep(OrTermination<(TimeTermination, UnimprovedStepCountTermination<S>), S, D>),
     WithUnimprovedTime(OrTermination<(TimeTermination, UnimprovedTimeTermination<S>), S, D>),
+}
+
+#[derive(Clone)]
+pub struct ChannelProgressCallback<S: PlanningSolution> {
+    sender: mpsc::UnboundedSender<SolverEvent<S>>,
+    _phantom: PhantomData<fn() -> S>,
+}
+
+impl<S: PlanningSolution> ChannelProgressCallback<S> {
+    fn new(sender: mpsc::UnboundedSender<SolverEvent<S>>) -> Self {
+        Self {
+            sender,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<S: PlanningSolution> fmt::Debug for ChannelProgressCallback<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChannelProgressCallback").finish()
+    }
+}
+
+impl<S: PlanningSolution> ProgressCallback<S> for ChannelProgressCallback<S> {
+    fn invoke(&self, progress: SolverProgressRef<'_, S>) {
+        match progress.kind {
+            SolverProgressKind::Progress => {
+                let _ = self.sender.send(SolverEvent::Progress {
+                    score: progress.score.cloned(),
+                    telemetry: progress.telemetry,
+                });
+            }
+            SolverProgressKind::BestSolution => {
+                if let (Some(solution), Some(score)) = (progress.solution, progress.score) {
+                    let _ = self.sender.send(SolverEvent::BestSolution {
+                        solution: (*solution).clone(),
+                        score: *score,
+                        telemetry: progress.telemetry,
+                    });
+                }
+            }
+        }
+    }
 }
 
 impl<S: PlanningSolution, D: Director<S>> fmt::Debug for AnyTermination<S, D> {
@@ -131,8 +177,7 @@ Problem-specific construction and local search are delegated to `spec`.
 */
 #[allow(clippy::too_many_arguments)]
 pub fn run_solver<S, C, Spec>(
-    mut solution: S,
-    finalize_fn: fn(&mut S),
+    solution: S,
     constraints_fn: fn() -> C,
     descriptor: fn() -> SolutionDescriptor,
     entity_count_by_descriptor: fn(&S, usize) -> usize,
@@ -146,8 +191,6 @@ where
     C: ConstraintSet<S, S::Score>,
     Spec: ProblemSpec<S, C>,
 {
-    finalize_fn(&mut solution);
-
     let config = SolverConfig::load("solver.toml").unwrap_or_default();
 
     spec.log_scale(&solution);
@@ -206,6 +249,91 @@ where
         terminate,
         callback,
     );
+
+    let final_score = result.solution.score().unwrap_or_default();
+    let final_telemetry = result.stats.snapshot();
+    let _ = sender.send(SolverEvent::Finished {
+        solution: result.solution.clone(),
+        score: final_score,
+        telemetry: final_telemetry,
+    });
+
+    info!(
+        event = "solve_end",
+        score = %final_score,
+        steps = result.stats.step_count,
+        moves_evaluated = result.stats.moves_evaluated,
+        moves_accepted = result.stats.moves_accepted,
+        score_calculations = result.stats.score_calculations,
+        moves_speed = final_telemetry.moves_per_second,
+        acceptance_rate = format!("{:.1}%", result.stats.acceptance_rate() * 100.0),
+    );
+    result.solution
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_stock_solver<S, C, P>(
+    solution: S,
+    constraints_fn: fn() -> C,
+    descriptor: fn() -> SolutionDescriptor,
+    entity_count_by_descriptor: fn(&S, usize) -> usize,
+    terminate: Option<&AtomicBool>,
+    sender: mpsc::UnboundedSender<SolverEvent<S>>,
+    default_time_limit_secs: u64,
+    is_trivial: fn(&S) -> bool,
+    log_scale: fn(&S),
+    build_phases: fn(&SolverConfig) -> PhaseSequence<P>,
+) -> S
+where
+    S: PlanningSolution,
+    S::Score: Score + ParseableScore,
+    C: ConstraintSet<S, S::Score>,
+    P: Send + std::fmt::Debug,
+    PhaseSequence<P>: Phase<S, ScoreDirector<S, C>, ChannelProgressCallback<S>>,
+{
+    let config = SolverConfig::load("solver.toml").unwrap_or_default();
+
+    log_scale(&solution);
+    let trivial = is_trivial(&solution);
+
+    let constraints = constraints_fn();
+    let director = ScoreDirector::with_descriptor(
+        solution,
+        constraints,
+        descriptor(),
+        entity_count_by_descriptor,
+    );
+
+    if trivial {
+        let mut solver_scope = SolverScope::new(director);
+        solver_scope.start_solving();
+        let score = solver_scope.calculate_score();
+        info!(event = "solve_end", score = %score);
+        let telemetry = solver_scope.stats().snapshot();
+        let solution = solver_scope.take_best_or_working_solution();
+        let _ = sender.send(SolverEvent::Finished {
+            solution: solution.clone(),
+            score,
+            telemetry,
+        });
+        return solution;
+    }
+
+    let (termination, time_limit) = build_termination::<S, C>(&config, default_time_limit_secs);
+
+    let callback = ChannelProgressCallback::new(sender.clone());
+
+    let phases = build_phases(&config);
+    let solver = Solver::new((phases,))
+        .with_termination(termination)
+        .with_time_limit(time_limit)
+        .with_progress_callback(callback);
+
+    let result = if let Some(flag) = terminate {
+        solver.with_terminate(flag).solve(director)
+    } else {
+        solver.solve(director)
+    };
 
     let final_score = result.solution.score().unwrap_or_default();
     let final_telemetry = result.stats.snapshot();

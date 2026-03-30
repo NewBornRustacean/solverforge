@@ -25,7 +25,7 @@ src/
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
 ├── standard.rs                             — StandardSpec struct
 ├── list_solver.rs                       — ListSpec struct
-├── run.rs                               — AnyTermination, build_termination, unified run_solver()
+├── run.rs                               — AnyTermination, build_termination, run_solver(), run_stock_solver()
 ├── problem_spec.rs                      — ProblemSpec trait
 ├── builder/
 │   ├── mod.rs                           — Re-exports from all builder submodules
@@ -165,6 +165,8 @@ src/
 │   ├── partitioned/
 │   │   ├── mod.rs                       — PartitionedSearchPhase, PartitionedSearchConfig, ChildPhases trait
 │   │   └── partitioner.rs              — SolutionPartitioner trait, FunctionalPartitioner, ThreadCount
+│   ├── sequence.rs                      — PhaseSequence<P>
+│   ├── stock_vnd.rs                     — StockVndPhase<S, M, MS>
 │   └── vnd/
 │       ├── mod.rs                       — Re-exports
 │       └── phase.rs                     — VndPhase, impl_vnd_phase! macro (up to 8 neighborhoods)

@@ -373,21 +373,10 @@ where
                     ))
                 }
                 _ => {
-                    tracing::warn!(
-                        "ListClarkeWright selected but one or more required fields \
-                         (depot_fn, distance_fn, element_load_fn, capacity_fn, assign_route_fn) \
-                         are None — falling back to ListCheapestInsertion"
+                    panic!(
+                        "list_clarke_wright requires depot_fn, distance_fn, \
+                         element_load_fn, capacity_fn, and assign_route_fn"
                     );
-                    ListConstruction::CheapestInsertion(ListCheapestInsertionPhase::new(
-                        element_count,
-                        get_assigned,
-                        entity_count,
-                        list_len,
-                        list_insert,
-                        list_remove,
-                        index_to_element,
-                        descriptor_index,
-                    ))
                 }
             }
         }
@@ -411,21 +400,10 @@ where
                     ))
                 }
                 _ => {
-                    tracing::warn!(
-                        "ListKOpt selected but one or more required fields \
-                         (k_opt_get_route, k_opt_set_route, k_opt_depot_fn, k_opt_distance_fn) \
-                         are None — falling back to ListCheapestInsertion"
+                    panic!(
+                        "list_k_opt requires k_opt_get_route, k_opt_set_route, \
+                         k_opt_depot_fn, and k_opt_distance_fn"
                     );
-                    ListConstruction::CheapestInsertion(ListCheapestInsertionPhase::new(
-                        element_count,
-                        get_assigned,
-                        entity_count,
-                        list_len,
-                        list_insert,
-                        list_remove,
-                        index_to_element,
-                        descriptor_index,
-                    ))
                 }
             }
         }

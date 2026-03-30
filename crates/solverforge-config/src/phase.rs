@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::acceptor::AcceptorConfig;
 use crate::forager::ForagerConfig;
-use crate::move_selector::MoveSelectorConfig;
+use crate::move_selector::{MoveSelectorConfig, VariableTargetConfig};
 use crate::termination::TerminationConfig;
 
 // Phase configuration.
@@ -14,6 +14,9 @@ pub enum PhaseConfig {
 
     // Local search phase.
     LocalSearch(LocalSearchConfig),
+
+    // Variable neighborhood descent phase.
+    Vnd(VndConfig),
 
     // Exhaustive search phase.
     ExhaustiveSearch(ExhaustiveSearchConfig),
@@ -37,6 +40,10 @@ pub struct ConstructionHeuristicConfig {
     #[serde(default)]
     pub construction_heuristic_type: ConstructionHeuristicType,
 
+    // Optional variable target.
+    #[serde(flatten)]
+    pub target: VariableTargetConfig,
+
     // k for ListKOpt (default 2).
     #[serde(default = "default_k")]
     pub k: usize,
@@ -49,6 +56,7 @@ impl Default for ConstructionHeuristicConfig {
     fn default() -> Self {
         Self {
             construction_heuristic_type: ConstructionHeuristicType::default(),
+            target: VariableTargetConfig::default(),
             k: default_k(),
             termination: None,
         }
@@ -115,6 +123,18 @@ pub struct LocalSearchConfig {
 
     // Move selector configuration.
     pub move_selector: Option<MoveSelectorConfig>,
+
+    // Phase termination configuration.
+    pub termination: Option<TerminationConfig>,
+}
+
+// VND configuration.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct VndConfig {
+    // Ordered neighborhood selectors.
+    #[serde(default)]
+    pub neighborhoods: Vec<MoveSelectorConfig>,
 
     // Phase termination configuration.
     pub termination: Option<TerminationConfig>,

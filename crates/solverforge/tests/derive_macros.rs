@@ -41,6 +41,10 @@ fn test_problem_fact_derives_correctly() {
         name: "Alice".to_string(),
     };
     assert_eq!(PlanningId::planning_id(&employee), 1);
+    assert_eq!(
+        Employee::problem_fact_descriptor("employees").id_field,
+        Some("id")
+    );
 }
 
 #[test]

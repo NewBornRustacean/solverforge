@@ -55,5 +55,6 @@ pub use typed_move_selector::{
     SwapMoveSelector,
 };
 pub use typed_value::{
-    FromSolutionTypedValueSelector, StaticTypedValueSelector, TypedValueSelector,
+    FromSolutionTypedValueSelector, PerEntityTypedValueSelector, StaticTypedValueSelector,
+    TypedValueSelector,
 };

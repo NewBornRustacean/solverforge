@@ -85,8 +85,8 @@ Solver
 pub use solverforge_solver::heuristic::selector::DefaultDistanceMeter;
 pub use solverforge_solver::CrossEntityDistanceMeter;
 pub use solverforge_solver::{
-    analyze, run_solver, Analyzable, ConstraintAnalysis, DescriptorStandardSpec, ScoreAnalysis,
-    Solvable, SolverEvent, SolverManager, SolverStatus, SolverTelemetry,
+    analyze, run_solver, Analyzable, ConstraintAnalysis, ScoreAnalysis, Solvable, SolverEvent,
+    SolverManager, SolverStatus, SolverTelemetry,
 };
 
 /* ============================================================================
@@ -161,7 +161,8 @@ pub mod __internal {
         KOptPhaseBuilder, ListConstructionPhaseBuilder, PhaseFactory, SolverFactory,
     };
     pub use solverforge_solver::{
-        DescriptorStandardSpec, ListSpec, SolverEvent, SolverTelemetry, StandardSpec,
+        run_stock_solver, DescriptorStandardSpec, ListSpec, SolverEvent, SolverTelemetry,
+        StandardSpec, StockVndPhase,
     };
 
     // Config

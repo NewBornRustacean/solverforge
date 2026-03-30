@@ -201,16 +201,14 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             let field_name_str = field_name.to_string();
             let element_type = extract_collection_inner_type(&f.ty)?;
             Some(quote! {
-                .with_problem_fact(::solverforge::__internal::ProblemFactDescriptor::new(
-                    stringify!(#element_type),
-                    ::std::any::TypeId::of::<#element_type>(),
-                    #field_name_str,
-                ).with_extractor(Box::new(::solverforge::__internal::TypedEntityExtractor::new(
-                    stringify!(#element_type),
-                    #field_name_str,
-                    |s: &#name| &s.#field_name,
-                    |s: &mut #name| &mut s.#field_name,
-                ))))
+                .with_problem_fact(#element_type::problem_fact_descriptor(#field_name_str).with_extractor(
+                    Box::new(::solverforge::__internal::TypedEntityExtractor::new(
+                        stringify!(#element_type),
+                        #field_name_str,
+                        |s: &#name| &s.#field_name,
+                        |s: &mut #name| &mut s.#field_name,
+                    ))
+                ))
             })
         })
         .collect();
@@ -233,10 +231,9 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         })
         .collect();
 
-    let list_operations = generate_list_operations(&shadow_config, fields, &constraints_path, name);
-    let standard_operations =
-        generate_standard_variable_operations(&standard_config, fields, &constraints_path, name);
-    let descriptor_standard_operations = generate_descriptor_standard_operations(
+    let list_operations = generate_list_operations(&shadow_config, fields, name);
+    let standard_operations = generate_standard_variable_operations(&standard_config, fields, name);
+    let stock_solve_internal = generate_stock_solve_internal(
         &shadow_config,
         &standard_config,
         fields,
@@ -276,7 +273,7 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
 
             #list_operations
             #standard_operations
-            #descriptor_standard_operations
+            #stock_solve_internal
         }
 
         #shadow_support_impl
@@ -292,8 +289,7 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
 fn generate_list_operations(
     config: &ShadowConfig,
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-    constraints_path: &Option<String>,
-    solution_name: &Ident,
+    _solution_name: &Ident,
 ) -> TokenStream {
     let (list_owner, list_field, element_type, element_collection) = match (
         &config.list_owner,
@@ -316,7 +312,7 @@ fn generate_list_operations(
 
     let descriptor_index = entity_fields
         .iter()
-        .position(|f| f.ident.as_ref().map(|i| i.to_string()) == Some(list_owner.clone()))
+        .position(|f| f.ident.as_ref().is_some_and(|ident| ident == list_owner))
         .expect("list_owner must be a planning_entity_collection field");
 
     let descriptor_index_lit = syn::LitInt::new(
@@ -325,176 +321,6 @@ fn generate_list_operations(
     );
 
     let element_collection_ident = Ident::new(element_collection, proc_macro2::Span::call_site());
-
-    // Generate finalize calls for all problem_fact_collection fields
-    let finalize_calls: Vec<_> = fields
-        .iter()
-        .filter(|f| has_attribute(&f.attrs, "problem_fact_collection"))
-        .filter_map(|f| {
-            let field_name = f.ident.as_ref()?;
-            Some(quote! {
-                for item in &mut s.#field_name {
-                    item.finalize();
-                }
-            })
-        })
-        .collect();
-
-    // Build solve_internal if constraints path provided
-    let solve_impl = constraints_path.as_ref().map(|path| {
-        let constraints_fn: syn::Path =
-            syn::parse_str(path).expect("constraints path must be a valid Rust path");
-
-        // Distance meter types: use provided paths or DefaultDistanceMeter
-        let cross_dm: syn::Expr = if let Some(dm) = &config.distance_meter {
-            let dm_path: syn::Path =
-                syn::parse_str(dm).expect("distance_meter must be a valid path");
-            syn::parse_quote! { #dm_path::default() }
-        } else {
-            syn::parse_quote! { ::solverforge::DefaultDistanceMeter }
-        };
-
-        let intra_dm: syn::Expr = if let Some(idm) = &config.intra_distance_meter {
-            let idm_path: syn::Path =
-                syn::parse_str(idm).expect("intra_distance_meter must be a valid path");
-            syn::parse_quote! { #idm_path::default() }
-        } else {
-            syn::parse_quote! { ::solverforge::DefaultDistanceMeter }
-        };
-
-        let variable_name_str = list_field.as_str();
-
-        let merge_feasible: syn::Expr = if let Some(mff) = &config.merge_feasible_fn {
-            let mff_path: syn::Path =
-                syn::parse_str(mff).expect("merge_feasible_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#mff_path) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let cw_depot: syn::Expr = if let Some(f) = &config.cw_depot_fn {
-            let p: syn::Path = syn::parse_str(f).expect("cw_depot_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let cw_dist: syn::Expr = if let Some(f) = &config.cw_distance_fn {
-            let p: syn::Path = syn::parse_str(f).expect("cw_distance_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let cw_load: syn::Expr = if let Some(f) = &config.cw_element_load_fn {
-            let p: syn::Path = syn::parse_str(f).expect("cw_element_load_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let cw_cap: syn::Expr = if let Some(f) = &config.cw_capacity_fn {
-            let p: syn::Path = syn::parse_str(f).expect("cw_capacity_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let cw_assign: syn::Expr = if let Some(f) = &config.cw_assign_route_fn {
-            let p: syn::Path = syn::parse_str(f).expect("cw_assign_route_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let k_opt_get: syn::Expr = if let Some(f) = &config.k_opt_get_route {
-            let p: syn::Path = syn::parse_str(f).expect("k_opt_get_route must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let k_opt_set: syn::Expr = if let Some(f) = &config.k_opt_set_route {
-            let p: syn::Path = syn::parse_str(f).expect("k_opt_set_route must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let k_opt_depot: syn::Expr = if let Some(f) = &config.k_opt_depot_fn {
-            let p: syn::Path = syn::parse_str(f).expect("k_opt_depot_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let k_opt_dist: syn::Expr = if let Some(f) = &config.k_opt_distance_fn {
-            let p: syn::Path = syn::parse_str(f).expect("k_opt_distance_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        let k_opt_feasible: syn::Expr = if let Some(f) = &config.k_opt_feasible_fn {
-            let p: syn::Path = syn::parse_str(f).expect("k_opt_feasible_fn must be a valid path");
-            syn::parse_quote! { ::core::option::Option::Some(#p) }
-        } else {
-            syn::parse_quote! { ::core::option::Option::None }
-        };
-
-        quote! {
-            fn solve_internal(
-                self,
-                terminate: Option<&std::sync::atomic::AtomicBool>,
-                sender: ::tokio::sync::mpsc::UnboundedSender<::solverforge::SolverEvent<Self>>,
-            ) -> Self {
-                ::solverforge::__internal::init_console();
-
-                ::solverforge::run_solver(
-                    self,
-                    #solution_name::finalize_all,
-                    #constraints_fn,
-                    Self::descriptor,
-                    Self::entity_count,
-                    terminate,
-                    sender,
-                    ::solverforge::__internal::ListSpec {
-                        list_len: #solution_name::list_len_static,
-                        list_remove: #solution_name::list_remove,
-                        list_insert: #solution_name::list_insert,
-                        list_get: #solution_name::list_get,
-                        list_set: #solution_name::list_set,
-                        list_reverse: #solution_name::list_reverse,
-                        sublist_remove: #solution_name::sublist_remove,
-                        sublist_insert: #solution_name::sublist_insert,
-                        ruin_remove: #solution_name::ruin_remove,
-                        ruin_insert: #solution_name::ruin_insert,
-                        element_count: #solution_name::element_count,
-                        get_assigned: #solution_name::assigned_elements,
-                        entity_count: #solution_name::n_entities,
-                        list_remove_for_construction: #solution_name::list_remove_for_construction,
-                        index_to_element: #solution_name::index_to_element_static,
-                        cross_distance_meter: #cross_dm,
-                        intra_distance_meter: #intra_dm,
-                        depot_fn: #cw_depot,
-                        distance_fn: #cw_dist,
-                        element_load_fn: #cw_load,
-                        capacity_fn: #cw_cap,
-                        assign_route_fn: #cw_assign,
-                        merge_feasible_fn: #merge_feasible,
-                        k_opt_get_route: #k_opt_get,
-                        k_opt_set_route: #k_opt_set,
-                        k_opt_depot_fn: #k_opt_depot,
-                        k_opt_distance_fn: #k_opt_dist,
-                        k_opt_feasible_fn: #k_opt_feasible,
-                        variable_name: #variable_name_str,
-                        descriptor_index: #descriptor_index_lit,
-                        _phantom: ::std::marker::PhantomData,
-                    },
-                )
-            }
-        }
-    });
 
     quote! {
         #[inline]
@@ -624,20 +450,12 @@ fn generate_list_operations(
                 e.#list_field_ident.push(elem);
             }
         }
-
-        #[inline]
-        pub fn finalize_all(s: &mut Self) {
-            #(#finalize_calls)*
-        }
-
-        #solve_impl
     }
 }
 
 fn generate_standard_variable_operations(
     config: &StandardVariableConfig,
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-    constraints_path: &Option<String>,
     _solution_name: &Ident,
 ) -> TokenStream {
     // ALL FOUR FIELDS REQUIRED FOR BASIC VARIABLE SUPPORT
@@ -665,62 +483,17 @@ fn generate_standard_variable_operations(
 
     let descriptor_index = entity_fields
         .iter()
-        .position(|f| f.ident.as_ref().map(|i| i.to_string()).as_ref() == Some(entity_collection))
+        .position(|f| {
+            f.ident
+                .as_ref()
+                .is_some_and(|ident| ident == entity_collection)
+        })
         .expect("entity_collection must be a planning_entity_collection field");
 
     let descriptor_index_lit = syn::LitInt::new(
         &descriptor_index.to_string(),
         proc_macro2::Span::call_site(),
     );
-
-    // Generate finalize calls for all problem_fact_collection fields
-    let finalize_calls: Vec<_> = fields
-        .iter()
-        .filter(|f| has_attribute(&f.attrs, "problem_fact_collection"))
-        .filter_map(|f| {
-            let field_name = f.ident.as_ref()?;
-            Some(quote! {
-                for item in &mut s.#field_name {
-                    item.finalize();
-                }
-            })
-        })
-        .collect();
-
-    // Generate solve_internal() only if constraints path is provided
-    let solve_impl = constraints_path.as_ref().map(|path| {
-        let constraints_fn: syn::Path =
-            syn::parse_str(path).expect("constraints path must be a valid Rust path");
-
-        quote! {
-            // Internal solve implementation called by the Solvable trait.
-            fn solve_internal(
-                self,
-                terminate: Option<&std::sync::atomic::AtomicBool>,
-                sender: ::tokio::sync::mpsc::UnboundedSender<::solverforge::SolverEvent<Self>>,
-            ) -> Self {
-                ::solverforge::__internal::init_console();
-
-                ::solverforge::run_solver(
-                    self,
-                    Self::finalize_all,
-                    #constraints_fn,
-                    Self::descriptor,
-                    Self::entity_count,
-                    terminate,
-                    sender,
-                    ::solverforge::__internal::StandardSpec {
-                        get_variable: Self::standard_get_variable,
-                        set_variable: Self::standard_set_variable,
-                        value_count: Self::standard_value_count,
-                        entity_count_fn: Self::standard_entity_count,
-                        variable_field: Self::standard_variable_field_name(),
-                        descriptor_index: Self::standard_variable_descriptor_index(),
-                    },
-                )
-            }
-        }
-    });
 
     quote! {
         #[inline]
@@ -756,55 +529,146 @@ fn generate_standard_variable_operations(
         pub const fn standard_variable_field_name() -> &'static str {
             #variable_field_str
         }
-
-        // Finalize all problem facts before solving.
-        // Called automatically by solve() to prepare derived fields.
-        #[inline]
-        pub fn finalize_all(s: &mut Self) {
-            #(#finalize_calls)*
-        }
-
-        #solve_impl
     }
 }
 
-fn generate_descriptor_standard_operations(
+fn generate_stock_solve_internal(
     shadow_config: &ShadowConfig,
     standard_config: &StandardVariableConfig,
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     constraints_path: &Option<String>,
     solution_name: &Ident,
 ) -> TokenStream {
-    if shadow_config.list_owner.is_some() || standard_config.entity_collection.is_some() {
-        return TokenStream::new();
-    }
-
     let Some(path) = constraints_path.as_ref() else {
         return TokenStream::new();
     };
 
+    if shadow_config.list_owner.is_some() && standard_config.entity_collection.is_some() {
+        return quote! {
+            compile_error!(
+                "mixed standard+list stock solving is not implemented yet; \
+                 remove solution-level stock config and finish the unified stock runtime first"
+            );
+        };
+    }
+
     let constraints_fn: syn::Path =
         syn::parse_str(path).expect("constraints path must be a valid Rust path");
 
-    let finalize_calls: Vec<_> = fields
-        .iter()
-        .filter(|f| has_attribute(&f.attrs, "problem_fact_collection"))
-        .filter_map(|f| {
-            let field_name = f.ident.as_ref()?;
-            Some(quote! {
-                for item in &mut s.#field_name {
-                    item.finalize();
-                }
-            })
-        })
-        .collect();
+    let list_spec = if let (Some(list_owner), Some(list_field)) =
+        (&shadow_config.list_owner, &shadow_config.list_field)
+    {
+        let cross_dm: syn::Expr = if let Some(dm) = &shadow_config.distance_meter {
+            let dm_path: syn::Path =
+                syn::parse_str(dm).expect("distance_meter must be a valid path");
+            syn::parse_quote! { #dm_path::default() }
+        } else {
+            syn::parse_quote! { ::solverforge::DefaultDistanceMeter }
+        };
+
+        let intra_dm: syn::Expr = if let Some(idm) = &shadow_config.intra_distance_meter {
+            let idm_path: syn::Path =
+                syn::parse_str(idm).expect("intra_distance_meter must be a valid path");
+            syn::parse_quote! { #idm_path::default() }
+        } else {
+            syn::parse_quote! { ::solverforge::DefaultDistanceMeter }
+        };
+
+        let variable_name_str = list_field.as_str();
+        let merge_feasible: syn::Expr =
+            option_fn_expr(&shadow_config.merge_feasible_fn, "merge_feasible_fn");
+        let cw_depot: syn::Expr = option_fn_expr(&shadow_config.cw_depot_fn, "cw_depot_fn");
+        let cw_dist: syn::Expr = option_fn_expr(&shadow_config.cw_distance_fn, "cw_distance_fn");
+        let cw_load: syn::Expr =
+            option_fn_expr(&shadow_config.cw_element_load_fn, "cw_element_load_fn");
+        let cw_cap: syn::Expr = option_fn_expr(&shadow_config.cw_capacity_fn, "cw_capacity_fn");
+        let cw_assign: syn::Expr =
+            option_fn_expr(&shadow_config.cw_assign_route_fn, "cw_assign_route_fn");
+        let k_opt_get: syn::Expr =
+            option_fn_expr(&shadow_config.k_opt_get_route, "k_opt_get_route");
+        let k_opt_set: syn::Expr =
+            option_fn_expr(&shadow_config.k_opt_set_route, "k_opt_set_route");
+        let k_opt_depot: syn::Expr =
+            option_fn_expr(&shadow_config.k_opt_depot_fn, "k_opt_depot_fn");
+        let k_opt_dist: syn::Expr =
+            option_fn_expr(&shadow_config.k_opt_distance_fn, "k_opt_distance_fn");
+        let k_opt_feasible: syn::Expr =
+            option_fn_expr(&shadow_config.k_opt_feasible_fn, "k_opt_feasible_fn");
+
+        let entity_fields: Vec<_> = fields
+            .iter()
+            .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
+            .collect();
+        let descriptor_index = entity_fields
+            .iter()
+            .position(|f| f.ident.as_ref().is_some_and(|ident| ident == list_owner))
+            .expect("list_owner must be a planning_entity_collection field");
+        let descriptor_index_lit = syn::LitInt::new(
+            &descriptor_index.to_string(),
+            proc_macro2::Span::call_site(),
+        );
+
+        quote! {
+            ::solverforge::__internal::ListSpec {
+                list_len: #solution_name::list_len_static,
+                list_remove: #solution_name::list_remove,
+                list_insert: #solution_name::list_insert,
+                list_get: #solution_name::list_get,
+                list_set: #solution_name::list_set,
+                list_reverse: #solution_name::list_reverse,
+                sublist_remove: #solution_name::sublist_remove,
+                sublist_insert: #solution_name::sublist_insert,
+                ruin_remove: #solution_name::ruin_remove,
+                ruin_insert: #solution_name::ruin_insert,
+                element_count: #solution_name::element_count,
+                get_assigned: #solution_name::assigned_elements,
+                entity_count: #solution_name::n_entities,
+                list_remove_for_construction: #solution_name::list_remove_for_construction,
+                index_to_element: #solution_name::index_to_element_static,
+                cross_distance_meter: #cross_dm,
+                intra_distance_meter: #intra_dm,
+                depot_fn: #cw_depot,
+                distance_fn: #cw_dist,
+                element_load_fn: #cw_load,
+                capacity_fn: #cw_cap,
+                assign_route_fn: #cw_assign,
+                merge_feasible_fn: #merge_feasible,
+                k_opt_get_route: #k_opt_get,
+                k_opt_set_route: #k_opt_set,
+                k_opt_depot_fn: #k_opt_depot,
+                k_opt_distance_fn: #k_opt_dist,
+                k_opt_feasible_fn: #k_opt_feasible,
+                variable_name: #variable_name_str,
+                descriptor_index: #descriptor_index_lit,
+                _phantom: ::std::marker::PhantomData,
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
+    let standard_spec = if standard_config.entity_collection.is_some() {
+        quote! {
+            ::solverforge::__internal::StandardSpec {
+                get_variable: Self::standard_get_variable,
+                set_variable: Self::standard_set_variable,
+                value_count: Self::standard_value_count,
+                entity_count_fn: Self::standard_entity_count,
+                variable_field: Self::standard_variable_field_name(),
+                descriptor_index: Self::standard_variable_descriptor_index(),
+            }
+        }
+    } else {
+        quote! { ::solverforge::__internal::DescriptorStandardSpec }
+    };
+
+    let spec_expr = if shadow_config.list_owner.is_some() {
+        list_spec
+    } else {
+        standard_spec
+    };
 
     quote! {
-        #[inline]
-        pub fn finalize_all(s: &mut Self) {
-            #(#finalize_calls)*
-        }
-
         fn solve_internal(
             self,
             terminate: Option<&std::sync::atomic::AtomicBool>,
@@ -814,15 +678,25 @@ fn generate_descriptor_standard_operations(
 
             ::solverforge::run_solver(
                 self,
-                #solution_name::finalize_all,
                 #constraints_fn,
                 Self::descriptor,
                 Self::entity_count,
                 terminate,
                 sender,
-                ::solverforge::__internal::DescriptorStandardSpec,
+                #spec_expr,
             )
         }
+    }
+}
+
+fn option_fn_expr(path: &Option<String>, label: &str) -> syn::Expr {
+    if let Some(path) = path {
+        let parsed: syn::Path = syn::parse_str(path).unwrap_or_else(|_| {
+            panic!("{label} must be a valid path");
+        });
+        syn::parse_quote! { ::core::option::Option::Some(#parsed) }
+    } else {
+        syn::parse_quote! { ::core::option::Option::None }
     }
 }
 

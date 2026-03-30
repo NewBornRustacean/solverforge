@@ -105,6 +105,8 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 | Field | Type | Default |
 |-------|------|---------|
 | `construction_heuristic_type` | `ConstructionHeuristicType` | `FirstFit` |
+| `entity_class` | `Option<String>` | `None` |
+| `variable_name` | `Option<String>` | `None` |
 | `k` | `usize` | `2` (for `ListKOpt`) |
 | `termination` | `Option<TerminationConfig>` | `None` |
 
@@ -118,6 +120,24 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 | `forager` | `Option<ForagerConfig>` |
 | `move_selector` | `Option<MoveSelectorConfig>` |
 | `termination` | `Option<TerminationConfig>` |
+
+### `VndConfig`
+
+Derives: `Debug, Clone, Default, Deserialize, Serialize`.
+
+| Field | Type |
+|-------|------|
+| `neighborhoods` | `Vec<MoveSelectorConfig>` |
+| `termination` | `Option<TerminationConfig>` |
+
+### `VariableTargetConfig`
+
+Derives: `Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq`.
+
+| Field | Type |
+|-------|------|
+| `entity_class` | `Option<String>` |
+| `variable_name` | `Option<String>` |
 
 ### `ForagerConfig`
 
@@ -170,6 +190,7 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 | Field | Type |
 |-------|------|
 | `entity_class` | `Option<String>` |
+| `variable_name` | `Option<String>` |
 
 ### `SwapMoveConfig`
 
@@ -178,6 +199,7 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 | Field | Type |
 |-------|------|
 | `entity_class` | `Option<String>` |
+| `variable_name` | `Option<String>` |
 
 ### `ListChangeMoveConfig`
 
@@ -185,6 +207,7 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 
 | Field | Type | Note |
 |-------|------|------|
+| `entity_class` | `Option<String>` | Filter by entity class |
 | `variable_name` | `Option<String>` | Filter by list variable name |
 
 ### `NearbyListChangeMoveConfig`
@@ -194,6 +217,7 @@ Derives: `Debug, Clone, Deserialize, Serialize`. Manual `Default` (max_nearby = 
 | Field | Type | Default |
 |-------|------|---------|
 | `max_nearby` | `usize` | `10` |
+| `entity_class` | `Option<String>` | `None` |
 | `variable_name` | `Option<String>` | `None` |
 
 ### `ListSwapMoveConfig`
@@ -202,6 +226,7 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 
 | Field | Type |
 |-------|------|
+| `entity_class` | `Option<String>` |
 | `variable_name` | `Option<String>` |
 
 ### `NearbyListSwapMoveConfig`
@@ -211,6 +236,7 @@ Derives: `Debug, Clone, Deserialize, Serialize`. Manual `Default` (max_nearby = 
 | Field | Type | Default |
 |-------|------|---------|
 | `max_nearby` | `usize` | `10` |
+| `entity_class` | `Option<String>` | `None` |
 | `variable_name` | `Option<String>` | `None` |
 
 ### `SubListChangeMoveConfig`
@@ -221,6 +247,7 @@ Derives: `Debug, Clone, Deserialize, Serialize`. Manual `Default`.
 |-------|------|---------|
 | `min_sublist_size` | `usize` | `1` |
 | `max_sublist_size` | `usize` | `3` |
+| `entity_class` | `Option<String>` | `None` |
 | `variable_name` | `Option<String>` | `None` |
 
 ### `SubListSwapMoveConfig`
@@ -231,6 +258,7 @@ Derives: `Debug, Clone, Deserialize, Serialize`. Manual `Default`.
 |-------|------|---------|
 | `min_sublist_size` | `usize` | `1` |
 | `max_sublist_size` | `usize` | `3` |
+| `entity_class` | `Option<String>` | `None` |
 | `variable_name` | `Option<String>` | `None` |
 
 ### `ListReverseMoveConfig`
@@ -239,6 +267,7 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 
 | Field | Type |
 |-------|------|
+| `entity_class` | `Option<String>` |
 | `variable_name` | `Option<String>` |
 
 ### `KOptMoveSelectorConfig`
@@ -250,6 +279,7 @@ Derives: `Debug, Clone, Deserialize, Serialize`. Manual `Default`.
 | `k` | `usize` | `3` |
 | `min_segment_len` | `usize` | `1` |
 | `max_nearby` | `usize` | `0` (full enumeration; >0 enables distance-pruned `NearbyKOptMoveSelector`) |
+| `entity_class` | `Option<String>` | `None` |
 | `variable_name` | `Option<String>` | `None` |
 
 ### `ListRuinMoveSelectorConfig`
@@ -261,6 +291,7 @@ Derives: `Debug, Clone, Deserialize, Serialize`. Manual `Default`.
 | `min_ruin_count` | `usize` | `2` |
 | `max_ruin_count` | `usize` | `5` |
 | `moves_per_step` | `Option<usize>` | `None` |
+| `entity_class` | `Option<String>` | `None` |
 | `variable_name` | `Option<String>` | `None` |
 
 ### `UnionMoveSelectorConfig`

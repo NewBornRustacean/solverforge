@@ -115,6 +115,8 @@ pub use phase::{
         ChildPhases, FunctionalPartitioner, PartitionedSearchConfig, PartitionedSearchPhase,
         SolutionPartitioner, ThreadCount,
     },
+    sequence::PhaseSequence,
+    stock_vnd::StockVndPhase,
     vnd::VndPhase,
     Phase,
 };
@@ -131,5 +133,5 @@ pub use termination::{
 pub use descriptor_standard::DescriptorStandardSpec;
 pub use list_solver::ListSpec;
 pub use problem_spec::ProblemSpec;
-pub use run::run_solver;
+pub use run::{run_solver, run_stock_solver};
 pub use standard::StandardSpec;

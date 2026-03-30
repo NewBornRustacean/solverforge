@@ -579,10 +579,15 @@ fn collect_bindings(descriptor: &SolutionDescriptor) -> Vec<VariableBinding> {
     bindings
 }
 
-fn find_binding(bindings: &[VariableBinding], entity_class: Option<&str>) -> Vec<VariableBinding> {
+fn find_binding(
+    bindings: &[VariableBinding],
+    entity_class: Option<&str>,
+    variable_name: Option<&str>,
+) -> Vec<VariableBinding> {
     bindings
         .iter()
         .filter(|binding| entity_class.is_none_or(|name| name == binding.entity_type_name))
+        .filter(|binding| variable_name.is_none_or(|name| name == binding.variable_name))
         .cloned()
         .collect()
 }
@@ -607,14 +612,36 @@ where
     {
         match cfg {
             MoveSelectorConfig::ChangeMoveSelector(change) => {
-                for binding in find_binding(bindings, change.entity_class.as_deref()) {
+                let matched = find_binding(
+                    bindings,
+                    change.target.entity_class.as_deref(),
+                    change.target.variable_name.as_deref(),
+                );
+                assert!(
+                    !matched.is_empty(),
+                    "change_move selector matched no standard planning variables for entity_class={:?} variable_name={:?}",
+                    change.target.entity_class,
+                    change.target.variable_name
+                );
+                for binding in matched {
                     leaves.push(DescriptorLeafSelector::Change(
                         DescriptorChangeMoveSelector::new(binding, descriptor.clone()),
                     ));
                 }
             }
             MoveSelectorConfig::SwapMoveSelector(swap) => {
-                for binding in find_binding(bindings, swap.entity_class.as_deref()) {
+                let matched = find_binding(
+                    bindings,
+                    swap.target.entity_class.as_deref(),
+                    swap.target.variable_name.as_deref(),
+                );
+                assert!(
+                    !matched.is_empty(),
+                    "swap_move selector matched no standard planning variables for entity_class={:?} variable_name={:?}",
+                    swap.target.entity_class,
+                    swap.target.variable_name
+                );
+                for binding in matched {
                     leaves.push(DescriptorLeafSelector::Swap(
                         DescriptorSwapMoveSelector::new(binding, descriptor.clone()),
                     ));
@@ -625,15 +652,19 @@ where
                     collect(child, descriptor, bindings, leaves);
                 }
             }
-            _ => {
-                for binding in bindings.iter().cloned() {
-                    leaves.push(DescriptorLeafSelector::Change(
-                        DescriptorChangeMoveSelector::new(binding.clone(), descriptor.clone()),
-                    ));
-                    leaves.push(DescriptorLeafSelector::Swap(
-                        DescriptorSwapMoveSelector::new(binding, descriptor.clone()),
-                    ));
-                }
+            MoveSelectorConfig::ListChangeMoveSelector(_)
+            | MoveSelectorConfig::NearbyListChangeMoveSelector(_)
+            | MoveSelectorConfig::ListSwapMoveSelector(_)
+            | MoveSelectorConfig::NearbyListSwapMoveSelector(_)
+            | MoveSelectorConfig::SubListChangeMoveSelector(_)
+            | MoveSelectorConfig::SubListSwapMoveSelector(_)
+            | MoveSelectorConfig::ListReverseMoveSelector(_)
+            | MoveSelectorConfig::KOptMoveSelector(_)
+            | MoveSelectorConfig::ListRuinMoveSelector(_) => {
+                panic!("list move selector configured against a standard-variable stock context");
+            }
+            MoveSelectorConfig::CartesianProductMoveSelector(_) => {
+                panic!("cartesian_product move selectors are not supported in stock solving");
             }
         }
     }
@@ -651,6 +682,11 @@ where
             }
         }
     }
+
+    assert!(
+        !leaves.is_empty(),
+        "stock move selector configuration produced no standard neighborhoods"
+    );
 
     VecUnionSelector::new(leaves)
 }

@@ -46,8 +46,33 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         TokenStream::new()
     };
 
+    let id_field_descriptor = if let Some(field) = id_field {
+        let field_name = field.ident.as_ref().unwrap();
+        quote! { desc = desc.with_id_field(stringify!(#field_name)); }
+    } else {
+        TokenStream::new()
+    };
+
     let expanded = quote! {
+        impl #impl_generics ::solverforge::__internal::ProblemFact for #name #ty_generics #where_clause {
+            fn as_any(&self) -> &dyn ::std::any::Any { self }
+        }
+
         #planning_id_impl
+
+        impl #impl_generics #name #ty_generics #where_clause {
+            pub fn problem_fact_descriptor(
+                solution_field: &'static str,
+            ) -> ::solverforge::__internal::ProblemFactDescriptor {
+                let mut desc = ::solverforge::__internal::ProblemFactDescriptor::new(
+                    stringify!(#name),
+                    ::std::any::TypeId::of::<Self>(),
+                    solution_field,
+                );
+                #id_field_descriptor
+                desc
+            }
+        }
     };
 
     Ok(expanded)
