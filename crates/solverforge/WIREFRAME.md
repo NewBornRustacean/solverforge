@@ -147,6 +147,7 @@ Used exclusively by macro-generated code. Not public API.
 - `FromSolutionEntitySelector`, `DefaultDistanceMeter`
 - `KOptPhaseBuilder`, `ListConstructionPhaseBuilder`
 - `PhaseFactory`, `SolverFactory`
+- `StockListVariableMetadata`
 
 **Config (from `solverforge-config`):**
 - `SolverConfig`

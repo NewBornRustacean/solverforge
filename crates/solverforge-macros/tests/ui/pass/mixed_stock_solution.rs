@@ -14,7 +14,7 @@ struct Route {
     #[planning_variable(value_range = "workers", allows_unassigned = true)]
     worker: Option<usize>,
 
-    #[planning_list_variable]
+    #[planning_list_variable(element_collection = "all_visits")]
     visits: Vec<usize>,
 }
 

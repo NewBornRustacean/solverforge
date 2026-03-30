@@ -15,6 +15,7 @@ use solverforge_config::{ConstructionHeuristicType, PhaseConfig, SolverConfig};
 use solverforge_core::domain::PlanningSolution;
 use solverforge_core::score::{ParseableScore, Score};
 use std::fmt;
+use std::marker::PhantomData;
 
 use crate::builder::list_selector::ListLeafSelector;
 use crate::builder::{
@@ -27,6 +28,67 @@ use crate::manager::{
     ListCheapestInsertionPhase, ListClarkeWrightPhase, ListKOptPhase, ListRegretInsertionPhase,
 };
 use crate::phase::localsearch::{AcceptedCountForager, LateAcceptanceAcceptor, LocalSearchPhase};
+
+/// Hidden stock list metadata emitted by `#[planning_entity]` and consumed by
+/// macro-generated stock solve code.
+pub struct StockListVariableMetadata<S, DM, IDM> {
+    pub variable_name: &'static str,
+    pub element_collection: &'static str,
+    pub cross_distance_meter: DM,
+    pub intra_distance_meter: IDM,
+    pub merge_feasible_fn: Option<fn(&S, &[usize]) -> bool>,
+    pub cw_depot_fn: Option<fn(&S) -> usize>,
+    pub cw_distance_fn: Option<fn(&S, usize, usize) -> i64>,
+    pub cw_element_load_fn: Option<fn(&S, usize) -> i64>,
+    pub cw_capacity_fn: Option<fn(&S) -> i64>,
+    pub cw_assign_route_fn: Option<fn(&mut S, usize, Vec<usize>)>,
+    pub k_opt_get_route: Option<fn(&S, usize) -> Vec<usize>>,
+    pub k_opt_set_route: Option<fn(&mut S, usize, Vec<usize>)>,
+    pub k_opt_depot_fn: Option<fn(&S, usize) -> usize>,
+    pub k_opt_distance_fn: Option<fn(&S, usize, usize) -> i64>,
+    pub k_opt_feasible_fn: Option<fn(&S, usize, &[usize]) -> bool>,
+    _phantom: PhantomData<fn() -> S>,
+}
+
+impl<S, DM, IDM> StockListVariableMetadata<S, DM, IDM> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        variable_name: &'static str,
+        element_collection: &'static str,
+        cross_distance_meter: DM,
+        intra_distance_meter: IDM,
+        merge_feasible_fn: Option<fn(&S, &[usize]) -> bool>,
+        cw_depot_fn: Option<fn(&S) -> usize>,
+        cw_distance_fn: Option<fn(&S, usize, usize) -> i64>,
+        cw_element_load_fn: Option<fn(&S, usize) -> i64>,
+        cw_capacity_fn: Option<fn(&S) -> i64>,
+        cw_assign_route_fn: Option<fn(&mut S, usize, Vec<usize>)>,
+        k_opt_get_route: Option<fn(&S, usize) -> Vec<usize>>,
+        k_opt_set_route: Option<fn(&mut S, usize, Vec<usize>)>,
+        k_opt_depot_fn: Option<fn(&S, usize) -> usize>,
+        k_opt_distance_fn: Option<fn(&S, usize, usize) -> i64>,
+        k_opt_feasible_fn: Option<fn(&S, usize, &[usize]) -> bool>,
+    ) -> Self {
+        Self {
+            variable_name,
+            element_collection,
+            cross_distance_meter,
+            intra_distance_meter,
+            merge_feasible_fn,
+            cw_depot_fn,
+            cw_distance_fn,
+            cw_element_load_fn,
+            cw_capacity_fn,
+            cw_assign_route_fn,
+            k_opt_get_route,
+            k_opt_set_route,
+            k_opt_depot_fn,
+            k_opt_distance_fn,
+            k_opt_feasible_fn,
+            _phantom: PhantomData,
+        }
+    }
+}
 
 // Type alias for the config-driven list local search phase
 type ConfigListLocalSearch<S, V, DM, IDM> = LocalSearchPhase<

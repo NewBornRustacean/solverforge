@@ -45,6 +45,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `#[planning_variable(allows_unassigned = bool, chained = bool, value_range_provider = "name")]` — genuine planning variable
   `value_range = "name"` is accepted as an alias for `value_range_provider`
 - `#[planning_list_variable(...)]` — list planning variable
+  stock solving currently requires `Vec<usize>` and `element_collection = "solution_field"`
 - `#[planning_pin]` — boolean field controlling entity pinning
 - `#[inverse_relation_shadow_variable(source_variable_name = "field")]` — inverse relation shadow
 - `#[previous_element_shadow_variable(source_variable_name = "field")]` — previous element shadow
@@ -55,6 +56,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `impl PlanningEntity for T` — `is_pinned()`, `as_any()`, `as_any_mut()`
 - `impl PlanningId for T` (if `#[planning_id]` present) — `type Id` set to field type, `planning_id()` returns field value
 - `impl T { pub fn entity_descriptor(solution_field: &'static str) -> EntityDescriptor }` — builds descriptor with all variable descriptors (genuine, list, shadow) and preserves `#[planning_id]` / `#[planning_pin]` metadata
+- Hidden list stock registry (when the entity has a `#[planning_list_variable]` field): `__SOLVERFORGE_LIST_VARIABLE_COUNT`, `__SOLVERFORGE_LIST_VARIABLE_NAME`, `__SOLVERFORGE_LIST_ELEMENT_COLLECTION`, `__solverforge_list_field()`, `__solverforge_list_field_mut()`, `__solverforge_list_stock_metadata()`
 - `pub trait {Entity}UnassignedFilter<...>` (when the entity has exactly one `Option<_>` planning variable) — `.unassigned()` on `UniConstraintStream<_, Entity, ...>`
 
 ### `PlanningSolutionImpl`
@@ -70,10 +72,6 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `#[solverforge_constraints_path = "path"]` — path to constraint factory function
 
 **`#[shadow_variable_updates]` parameters:**
-- `list_owner = "field"` — entity collection field containing list owners
-- `list_field = "field"` — field on entity containing the list (Vec)
-- `element_collection = "field"` — solution field with all elements
-- `element_type = "Type"` — element type name
 - `inverse_field = "field"` — field on element for inverse mapping
 - `previous_field = "field"` — field on element for previous pointer
 - `next_field = "field"` — field on element for next pointer
@@ -81,8 +79,6 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `post_update_listener = "method"` — method name called after all shadow updates per entity
 - `entity_aggregate = "target:sum:source"` — aggregate element field onto entity (sum only)
 - `entity_compute = "target:method"` — compute entity field via method
-- `distance_meter = "path"` — optional cross-entity distance meter type (defaults to `DefaultDistanceMeter`)
-- `intra_distance_meter = "path"` — optional intra-entity distance meter type (defaults to `DefaultDistanceMeter`)
 
 **`#[planning_list_variable]` stock parameters:**
 - `element_collection = "field"` — solution field with all list elements

@@ -169,7 +169,8 @@ pub mod __internal {
         build_mixed_local_search, build_mixed_vnd, descriptor_has_bindings, log_stock_solve_start,
         run_stock_solver, DescriptorConstruction, DescriptorLocalSearch, DescriptorVnd,
         ListConstruction, MixedStockLocalSearch, MixedStockVnd, Phase, PhaseSequence,
-        SeedBestSolutionPhase, SolverEvent, SolverTelemetry, StockVndPhase,
+        SeedBestSolutionPhase, SolverEvent, SolverTelemetry, StockListVariableMetadata,
+        StockVndPhase,
     };
 
     // Config
