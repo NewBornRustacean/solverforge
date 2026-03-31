@@ -22,7 +22,7 @@ pub use descriptor::{
     EntityDescriptor, ProblemFactDescriptor, SolutionDescriptor, UsizeEntityValueProvider,
     UsizeGetter, UsizeSetter, VariableDescriptor,
 };
-pub use entity_ref::{EntityExtractor, EntityRef, TypedEntityExtractor};
+pub use entity_ref::{EntityCollectionExtractor, EntityExtractor, EntityRef};
 pub use listener::{
     ListVariableListener, ListVariableNotification, VariableListener, VariableNotification,
 };

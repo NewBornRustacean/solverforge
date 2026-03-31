@@ -12,7 +12,7 @@ use solverforge_scoring::Director;
 
 use crate::heuristic::r#move::Move;
 use crate::heuristic::selector::decorator::VecUnionSelector;
-use crate::heuristic::selector::typed_move_selector::MoveSelector;
+use crate::heuristic::selector::move_selector::MoveSelector;
 use crate::heuristic::selector::EntityReference;
 use crate::phase::construction::{
     BestFitForager, ConstructionHeuristicPhase, EntityPlacer, FirstFitForager, Placement,
