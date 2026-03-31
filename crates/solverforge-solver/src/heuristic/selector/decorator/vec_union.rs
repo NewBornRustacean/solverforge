@@ -14,7 +14,7 @@ use solverforge_scoring::Director;
 
 use crate::heuristic::r#move::Move;
 use crate::heuristic::r#move::MoveArena;
-use crate::heuristic::selector::typed_move_selector::MoveSelector;
+use crate::heuristic::selector::move_selector::MoveSelector;
 
 /// Combines moves from an arbitrary number of leaf selectors into a single stream.
 ///

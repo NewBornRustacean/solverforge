@@ -135,7 +135,7 @@ Used exclusively by macro-generated code. Not public API.
 **Domain types (from `solverforge-core::domain`):**
 - `PlanningEntity`, `PlanningSolution`, `PlanningId`, `ProblemFact`
 - `EntityDescriptor`, `SolutionDescriptor`, `ProblemFactDescriptor`, `VariableDescriptor`
-- `TypedEntityExtractor`
+- `EntityCollectionExtractor`
 - `ShadowVariableKind`
 
 **Scoring (from `solverforge-scoring`):**

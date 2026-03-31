@@ -105,7 +105,7 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             let element_type = extract_collection_inner_type(&f.ty)?;
             Some(quote! {
                 .with_entity(#element_type::entity_descriptor(#field_name_str).with_extractor(
-                    Box::new(::solverforge::__internal::TypedEntityExtractor::new(
+                    Box::new(::solverforge::__internal::EntityCollectionExtractor::new(
                         stringify!(#element_type),
                         #field_name_str,
                         |s: &#name| &s.#field_name,
@@ -125,7 +125,7 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             let element_type = extract_collection_inner_type(&f.ty)?;
             Some(quote! {
                 .with_problem_fact(#element_type::problem_fact_descriptor(#field_name_str).with_extractor(
-                    Box::new(::solverforge::__internal::TypedEntityExtractor::new(
+                    Box::new(::solverforge::__internal::EntityCollectionExtractor::new(
                         stringify!(#element_type),
                         #field_name_str,
                         |s: &#name| &s.#field_name,

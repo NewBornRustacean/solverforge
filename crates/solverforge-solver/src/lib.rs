@@ -58,7 +58,7 @@ pub use heuristic::{
     EntityReference,
     EntitySelector,
     FromSolutionEntitySelector,
-    FromSolutionTypedValueSelector,
+    FromSolutionValueSelector,
     KOptConfig,
     KOptMove,
     KOptMoveSelector,
@@ -82,11 +82,11 @@ pub use heuristic::{
     RuinMove,
     RuinMoveSelector,
     SelectionOrder,
-    StaticTypedValueSelector,
+    StaticValueSelector,
     SubPillarConfig,
     SwapMove,
     SwapMoveSelector,
-    TypedValueSelector,
+    ValueSelector,
     // Vec union selector
     VecUnionSelector,
 };
