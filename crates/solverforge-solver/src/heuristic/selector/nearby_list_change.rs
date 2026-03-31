@@ -133,6 +133,12 @@ Useful for intra-route moves only.
 #[derive(Debug, Clone, Copy)]
 pub struct DefaultCrossEntityDistanceMeter;
 
+impl Default for DefaultCrossEntityDistanceMeter {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl<S> CrossEntityDistanceMeter<S> for DefaultCrossEntityDistanceMeter {
     fn distance(
         &self,

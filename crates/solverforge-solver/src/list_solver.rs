@@ -48,7 +48,9 @@ pub trait ListVariableEntity<S> {
     type CrossDistanceMeter: CrossEntityDistanceMeter<S> + Clone + fmt::Debug;
     type IntraDistanceMeter: CrossEntityDistanceMeter<S> + Clone + fmt::Debug + 'static;
 
+    const HAS_STOCK_LIST_VARIABLE: bool;
     const STOCK_LIST_VARIABLE_NAME: &'static str;
+    const STOCK_LIST_ELEMENT_SOURCE: Option<&'static str>;
 
     fn list_field(entity: &Self) -> &[usize];
     fn list_field_mut(entity: &mut Self) -> &mut Vec<usize>;

@@ -7,6 +7,7 @@ use syn::{Data, DeriveInput, Error, Fields, Ident, Type};
 use crate::attr_parse::{
     get_attribute, has_attribute, parse_attribute_bool, parse_attribute_string,
 };
+use crate::list_registry::record_list_entity_metadata;
 
 pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
     let name = &input.ident;
@@ -576,8 +577,12 @@ fn generate_list_metadata(
         field,
     )?;
 
+    record_list_entity_metadata(&entity_name.to_string(), element_collection.clone());
+
     Ok(quote! {
+        pub const __SOLVERFORGE_LIST_VARIABLE_COUNT: usize = 1;
         pub const __SOLVERFORGE_LIST_VARIABLE_NAME: &'static str = #field_name_str;
+        pub const __SOLVERFORGE_LIST_ELEMENT_COLLECTION: &'static str = #element_collection;
 
         #[inline]
         pub fn __solverforge_list_field(entity: &Self) -> &[usize] {
@@ -622,7 +627,53 @@ fn generate_list_trait_impl(
     list_variables: &[&syn::Field],
 ) -> Result<TokenStream, Error> {
     let Some(field) = list_variables.first().copied() else {
-        return Ok(TokenStream::new());
+        return Ok(quote! {
+            impl<Solution> ::solverforge::__internal::ListVariableEntity<Solution> for #entity_name
+            where
+                Solution: ::solverforge::__internal::PlanningSolution,
+            {
+                type CrossDistanceMeter = ::solverforge::__internal::DefaultCrossEntityDistanceMeter;
+                type IntraDistanceMeter = ::solverforge::__internal::DefaultCrossEntityDistanceMeter;
+
+                const HAS_STOCK_LIST_VARIABLE: bool = false;
+                const STOCK_LIST_VARIABLE_NAME: &'static str = "";
+                const STOCK_LIST_ELEMENT_SOURCE: ::core::option::Option<&'static str> =
+                    ::core::option::Option::None;
+
+                #[inline]
+                fn list_field(_entity: &Self) -> &[usize] {
+                    panic!("ListVariableEntity::list_field called on an entity without #[planning_list_variable]");
+                }
+
+                #[inline]
+                fn list_field_mut(_entity: &mut Self) -> &mut ::std::vec::Vec<usize> {
+                    panic!("ListVariableEntity::list_field_mut called on an entity without #[planning_list_variable]");
+                }
+
+                #[inline]
+                fn list_metadata() -> ::solverforge::__internal::ListVariableMetadata<
+                    Solution,
+                    Self::CrossDistanceMeter,
+                    Self::IntraDistanceMeter,
+                > {
+                    ::solverforge::__internal::ListVariableMetadata::new(
+                        ::solverforge::__internal::DefaultCrossEntityDistanceMeter::default(),
+                        ::solverforge::__internal::DefaultCrossEntityDistanceMeter::default(),
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                    )
+                }
+            }
+        });
     };
 
     let attr = get_attribute(&field.attrs, "planning_list_variable").unwrap();
@@ -638,6 +689,12 @@ fn generate_list_trait_impl(
         "intra_distance_meter",
         field,
     )?;
+    let element_source = parse_attribute_string(attr, "element_collection").ok_or_else(|| {
+        Error::new_spanned(
+            field,
+            "#[planning_list_variable] requires `element_collection = \"solution_collection\"` for stock solving",
+        )
+    })?;
 
     Ok(quote! {
         impl<Solution> ::solverforge::__internal::ListVariableEntity<Solution> for #entity_name
@@ -647,7 +704,10 @@ fn generate_list_trait_impl(
             type CrossDistanceMeter = #cross_dm_ty;
             type IntraDistanceMeter = #intra_dm_ty;
 
+            const HAS_STOCK_LIST_VARIABLE: bool = true;
             const STOCK_LIST_VARIABLE_NAME: &'static str = Self::__SOLVERFORGE_LIST_VARIABLE_NAME;
+            const STOCK_LIST_ELEMENT_SOURCE: ::core::option::Option<&'static str> =
+                ::core::option::Option::Some(#element_source);
 
             #[inline]
             fn list_field(entity: &Self) -> &[usize] {
@@ -818,6 +878,8 @@ mod tests {
         assert!(expanded.contains(
             "pub const __SOLVERFORGE_LIST_ELEMENT_COLLECTION : & 'static str = \"all_tasks\""
         ));
+        assert!(expanded.contains("const HAS_STOCK_LIST_VARIABLE : bool = true"));
+        assert!(expanded.contains("STOCK_LIST_ELEMENT_SOURCE"));
         assert!(expanded.contains("pub fn __solverforge_list_metadata < Solution >"));
         assert!(expanded.contains("pub trait TaskUnassignedFilter"));
         assert!(expanded.contains("fn unassigned (self)"));

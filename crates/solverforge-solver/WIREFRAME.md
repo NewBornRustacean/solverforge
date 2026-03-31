@@ -712,6 +712,8 @@ Aggregate and per-phase metrics: step count, moves evaluated/accepted, score cal
 
 Public helpers: `ListConstruction<S, V>`, `ListVariableMetadata<S, DM, IDM>`, `ListVariableEntity<S>`, `build_list_construction(config: Option<&ConstructionHeuristicConfig>, ...)`
 
+`ListVariableEntity<S>` exposes the stock-list metadata used by the macros: `HAS_STOCK_LIST_VARIABLE`, `STOCK_LIST_VARIABLE_NAME`, and `STOCK_LIST_ELEMENT_SOURCE` in addition to the list accessors and metadata factory.
+
 ### `unified_search.rs`
 
 Public helpers: `UnifiedMove<S, V>`, `UnifiedNeighborhood<S, V, DM, IDM>`, `UnifiedLocalSearch<S, V, DM, IDM>`, `UnifiedVnd<S, V, DM, IDM>`, `build_unified_move_selector()`, `build_unified_local_search()`, `build_unified_vnd()`

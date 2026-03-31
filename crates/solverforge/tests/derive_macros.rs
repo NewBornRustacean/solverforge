@@ -11,6 +11,12 @@ pub struct Employee {
     pub name: String,
 }
 
+#[problem_fact]
+pub struct Visit {
+    #[planning_id]
+    pub id: i64,
+}
+
 // A planning entity representing a shift.
 #[planning_entity]
 pub struct Shift {
@@ -21,6 +27,15 @@ pub struct Shift {
     pub employee_id: Option<i64>,
 }
 
+#[planning_entity]
+pub struct Route {
+    #[planning_id]
+    pub id: i64,
+
+    #[planning_list_variable(element_collection = "visits")]
+    pub visits: Vec<usize>,
+}
+
 // A planning solution representing a schedule.
 #[planning_solution]
 pub struct Schedule {
@@ -29,6 +44,18 @@ pub struct Schedule {
 
     #[planning_entity_collection]
     pub shifts: Vec<Shift>,
+
+    #[planning_score]
+    pub score: Option<HardSoftScore>,
+}
+
+#[planning_solution]
+pub struct RoutePlan {
+    #[problem_fact_collection]
+    pub visits: Vec<Visit>,
+
+    #[planning_entity_collection]
+    pub routes: Vec<Route>,
 
     #[planning_score]
     pub score: Option<HardSoftScore>,
@@ -98,4 +125,22 @@ fn test_solution_descriptor_preserves_entity_variable_metadata() {
 
     assert!(employee_var.allows_unassigned);
     assert_eq!(employee_var.value_range_provider, Some("employees"));
+}
+
+#[test]
+fn test_field_only_list_solution_derives_runtime_helpers() {
+    let plan = RoutePlan {
+        visits: vec![Visit { id: 10 }, Visit { id: 11 }, Visit { id: 12 }],
+        routes: vec![Route {
+            id: 1,
+            visits: vec![2, 0],
+        }],
+        score: None,
+    };
+
+    assert_eq!(RoutePlan::element_count(&plan), 3);
+    assert_eq!(RoutePlan::n_entities(&plan), 1);
+    assert_eq!(RoutePlan::list_len_static(&plan, 0), 2);
+    assert_eq!(RoutePlan::index_to_element_static(&plan, 1), 1);
+    assert_eq!(RoutePlan::assigned_elements(&plan), vec![2, 0]);
 }

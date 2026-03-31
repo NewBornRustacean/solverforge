@@ -1,12 +1,6 @@
 use solverforge::prelude::*;
 
-#[problem_fact]
-struct Worker {
-    #[planning_id]
-    id: usize,
-}
-
-#[problem_fact]
+#[planning_entity]
 struct Visit {
     #[planning_id]
     id: usize,
@@ -17,22 +11,16 @@ struct Route {
     #[planning_id]
     id: usize,
 
-    #[planning_variable(value_range = "workers", allows_unassigned = true)]
-    worker: Option<usize>,
-
     #[planning_list_variable(element_collection = "visits")]
     visits: Vec<usize>,
 }
 
 #[planning_solution]
-struct MixedPlan {
-    #[problem_fact_collection]
-    workers: Vec<Worker>,
-
+struct Plan {
     #[planning_entity_collection]
     routes: Vec<Route>,
 
-    #[problem_fact_collection]
+    #[planning_entity_collection]
     visits: Vec<Visit>,
 
     #[planning_score]
@@ -40,8 +28,7 @@ struct MixedPlan {
 }
 
 fn main() {
-    let _ = MixedPlan {
-        workers: Vec::new(),
+    let _ = Plan {
         routes: Vec::new(),
         visits: Vec::new(),
         score: None,

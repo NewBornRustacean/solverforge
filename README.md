@@ -24,14 +24,21 @@ SolverForge optimizes planning and scheduling problems using metaheuristic algor
 
 ```bash
 cargo install solverforge-cli
-solverforge new my-scheduler --standard=employee-scheduling
+solverforge new my-scheduler --standard
 cd my-scheduler
 solverforge server
 ```
 
 Open http://localhost:7860 to see your solver in action.
 
-The standalone `solverforge-cli` repository scaffolds complete SolverForge projects and sample data. The current templates cover standard-variable and list-heavy planning models, and the generated code targets the same unified runtime. Use `solverforge generate` to add entities, facts, and constraints interactively.
+Start new projects with the standalone [`solverforge-cli`](https://github.com/solverforge/solverforge-cli) repository. It scaffolds complete SolverForge applications and sample data, while this repository provides the runtime crates you extend once the scaffold exists.
+
+The current templates cover standard-variable and list-heavy planning models, and the generated code targets the same unified runtime. Use `solverforge generate` to add entities, facts, and constraints interactively.
+
+## Extend the Scaffold
+
+- [Extend the solver](docs/extend-solver.md) when you need custom constraints, phases, selectors, termination, or solver configuration beyond the default scaffold.
+- [Extend the domain](docs/extend-domain.md) when you need more entities, facts, variables, scoring, or mixed standard/list modeling inside the generated app.
 
 ## Zero-Erasure Architecture
 

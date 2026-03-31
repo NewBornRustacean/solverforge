@@ -64,7 +64,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 
 **Consumed attributes on fields:**
 - `#[planning_entity_collection]` — `Vec<Entity>` field containing planning entities
-- `#[planning_list_element_collection(owner = "field")]` — `Vec<usize>` field containing all elements for the named list owner
+- `#[planning_list_element_collection(owner = "field")]` — legacy `Vec<usize>` field containing all elements for the named list owner; optional when the solution has a matching `#[planning_entity_collection]` or `#[problem_fact_collection]` field whose name matches the entity list variable's `element_collection`
 - `#[problem_fact_collection]` — `Vec<Fact>` field containing problem facts
 - `#[planning_score]` — `Option<Score>` field (required)
 - `#[value_range_provider]` — value range source
@@ -95,7 +95,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `impl PlanningSolution for T` — `type Score`, `score()`, `set_score()`
 - `impl T { pub fn descriptor() -> SolutionDescriptor }` — builds full descriptor with entity extractors and fact extractors, reusing entity-generated descriptors so field-level variable metadata is preserved
 - `impl T { pub fn entity_count(&Self, descriptor_index: usize) -> usize }` — entity count by descriptor index
-- List operations (when `#[planning_list_element_collection(owner = "...")]` is present): `list_len()`, `list_len_static()`, `list_remove()`, `list_insert()`, `list_get()`, `list_set()`, `list_reverse()`, `sublist_remove()`, `sublist_insert()`, `ruin_remove()`, `ruin_insert()`, `list_remove_for_construction()`, `index_to_element_static()`, `list_variable_descriptor_index()`, `element_count()`, `assigned_elements()`, `n_entities()`, `assign_element()`
+- List operations (when a stock list owner is detected either from matching entity/fact collections or the legacy `#[planning_list_element_collection(...)]` field): `list_len()`, `list_len_static()`, `list_remove()`, `list_insert()`, `list_get()`, `list_set()`, `list_reverse()`, `sublist_remove()`, `sublist_insert()`, `ruin_remove()`, `ruin_insert()`, `list_remove_for_construction()`, `index_to_element_static()`, `list_variable_descriptor_index()`, `element_count()`, `assigned_elements()`, `n_entities()`, `assign_element()`
 - `impl ShadowVariableSupport for T` — `update_entity_shadows()` (no-op if no shadow config; generates inverse/previous/next/cascading/aggregate/compute updates otherwise)
 - `impl SolvableSolution for T` — delegates to `descriptor()` and `entity_count()`
 - `impl Solvable for T` (when constraints path specified) — `solve()` calls `solve_internal()`

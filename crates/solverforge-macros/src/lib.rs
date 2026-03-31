@@ -5,6 +5,7 @@ use quote::quote;
 use syn::{parse_macro_input, DeriveInput, ItemStruct};
 
 mod attr_parse;
+mod list_registry;
 mod planning_entity;
 mod planning_solution;
 mod problem_fact;

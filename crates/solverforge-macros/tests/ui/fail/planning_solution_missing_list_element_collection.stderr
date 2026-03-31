@@ -1,4 +1,4 @@
-error: planning solution with list owner `routes` requires a `#[planning_list_element_collection(owner = "routes")]` field of type Vec<usize>
+error: planning solution with list owner `routes` requires a `#[planning_entity_collection]` or `#[problem_fact_collection]` field named `all_visits`
   --> tests/ui/fail/planning_solution_missing_list_element_collection.rs:12:1
    |
 12 | #[planning_solution]

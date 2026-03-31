@@ -1,12 +1,13 @@
 // #[planning_solution] derive macro implementation
 
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Error, Fields, Ident, Lit, Meta};
 
 use crate::attr_parse::{
     get_attribute, has_attribute, parse_attribute_list, parse_attribute_string,
 };
+use crate::list_registry::lookup_list_entity_metadata;
 
 #[derive(Default)]
 struct ShadowConfig {
@@ -204,12 +205,72 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
 struct ListOwnerConfig<'a> {
     field_ident: &'a Ident,
     entity_type: &'a syn::Type,
-    descriptor_index: usize,
+    element_collection_name: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ListElementCollectionKind {
+    MatchingCollection,
+    LegacyListCollection,
 }
 
 struct ListElementCollectionConfig<'a> {
     field_ident: &'a Ident,
     owner_field: String,
+    kind: ListElementCollectionKind,
+}
+
+struct ListRuntimeConfig<'a> {
+    list_owner: ListOwnerConfig<'a>,
+    element_collection: ListElementCollectionConfig<'a>,
+}
+
+fn type_name_from_collection(ty: &syn::Type) -> Option<String> {
+    let entity_type = extract_collection_inner_type(ty)?;
+    let syn::Type::Path(type_path) = entity_type else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    Some(segment.ident.to_string())
+}
+
+fn find_registered_list_owner_config<'a>(
+    fields: &'a syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+) -> Result<Option<ListOwnerConfig<'a>>, Error> {
+    let mut matches = Vec::new();
+
+    for field in fields
+        .iter()
+        .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
+    {
+        let Some(field_ident) = field.ident.as_ref() else {
+            continue;
+        };
+        let Some(type_name) = type_name_from_collection(&field.ty) else {
+            continue;
+        };
+        let Some(metadata) = lookup_list_entity_metadata(&type_name) else {
+            continue;
+        };
+        let Some(entity_type) = extract_collection_inner_type(&field.ty) else {
+            continue;
+        };
+
+        matches.push(ListOwnerConfig {
+            field_ident,
+            entity_type,
+            element_collection_name: metadata.element_collection_name,
+        });
+    }
+
+    if matches.len() > 1 {
+        return Err(Error::new(
+            proc_macro2::Span::call_site(),
+            "#[planning_solution] currently supports at most one planning entity collection with #[planning_list_variable(...)]",
+        ));
+    }
+
+    Ok(matches.pop())
 }
 
 fn find_list_owner_config<'a>(
@@ -223,17 +284,20 @@ fn find_list_owner_config<'a>(
     fields
         .iter()
         .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
-        .enumerate()
-        .find_map(|(descriptor_index, field)| {
+        .find_map(|field| {
             let field_ident = field.ident.as_ref()?;
             if field_ident != list_owner {
                 return None;
             }
             let entity_type = extract_collection_inner_type(&field.ty)?;
+            let element_collection_name = type_name_from_collection(&field.ty)
+                .and_then(|type_name| lookup_list_entity_metadata(&type_name))
+                .map(|metadata| metadata.element_collection_name)
+                .unwrap_or_default();
             Some(ListOwnerConfig {
                 field_ident,
                 entity_type,
-                descriptor_index,
+                element_collection_name,
             })
         })
         .map(Some)
@@ -267,6 +331,7 @@ fn find_list_element_collection_config<'a>(
             Some(ListElementCollectionConfig {
                 field_ident,
                 owner_field: owner,
+                kind: ListElementCollectionKind::LegacyListCollection,
             })
         })
         .collect::<Vec<_>>();
@@ -283,25 +348,63 @@ fn find_list_element_collection_config<'a>(
 
 fn find_list_runtime_config<'a>(
     fields: &'a syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Option<(ListOwnerConfig<'a>, ListElementCollectionConfig<'a>)>, Error> {
+) -> Result<Option<ListRuntimeConfig<'a>>, Error> {
+    if let Some(list_owner) = find_registered_list_owner_config(fields)? {
+        if let Some(element_collection) = fields.iter().find_map(|field| {
+            let field_ident = field.ident.as_ref()?;
+            if *field_ident != list_owner.element_collection_name {
+                return None;
+            }
+            if has_attribute(&field.attrs, "planning_entity_collection")
+                || has_attribute(&field.attrs, "problem_fact_collection")
+            {
+                Some(ListElementCollectionConfig {
+                    field_ident,
+                    owner_field: list_owner.field_ident.to_string(),
+                    kind: ListElementCollectionKind::MatchingCollection,
+                })
+            } else {
+                None
+            }
+        }) {
+            return Ok(Some(ListRuntimeConfig {
+                list_owner,
+                element_collection,
+            }));
+        }
+    }
+
     let Some(element_collection) = find_list_element_collection_config(fields)? else {
+        if let Some(list_owner) = find_registered_list_owner_config(fields)? {
+            return Err(Error::new(
+                proc_macro2::Span::call_site(),
+                format!(
+                    "planning solution with list owner `{}` requires a `#[planning_entity_collection]` or `#[problem_fact_collection]` field named `{}`",
+                    list_owner.field_ident,
+                    list_owner.element_collection_name,
+                ),
+            ));
+        }
         return Ok(None);
     };
 
     let owner = fields
         .iter()
         .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
-        .enumerate()
-        .find_map(|(descriptor_index, field)| {
+        .find_map(|field| {
             let field_ident = field.ident.as_ref()?;
             if *field_ident != element_collection.owner_field {
                 return None;
             }
             let entity_type = extract_collection_inner_type(&field.ty)?;
+            let element_collection_name = type_name_from_collection(&field.ty)
+                .and_then(|type_name| lookup_list_entity_metadata(&type_name))
+                .map(|metadata| metadata.element_collection_name)
+                .unwrap_or_default();
             Some(ListOwnerConfig {
                 field_ident,
                 entity_type,
-                descriptor_index,
+                element_collection_name,
             })
         })
         .ok_or_else(|| {
@@ -315,7 +418,10 @@ fn find_list_runtime_config<'a>(
             )
         })?;
 
-    Ok(Some((owner, element_collection)))
+    Ok(Some(ListRuntimeConfig {
+        list_owner: owner,
+        element_collection,
+    }))
 }
 
 fn shadow_updates_requested(config: &ShadowConfig) -> bool {
@@ -333,71 +439,388 @@ fn generate_list_operations(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     _solution_name: &Ident,
 ) -> Result<TokenStream, Error> {
-    let Some((list_owner, element_collection)) = find_list_runtime_config(fields)? else {
-        return Ok(TokenStream::new());
-    };
+    let list_owners: Vec<_> = fields
+        .iter()
+        .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
+        .enumerate()
+        .filter_map(|(idx, field)| {
+            let field_ident = field.ident.as_ref()?;
+            let entity_type = extract_collection_inner_type(&field.ty)?;
+            Some((idx, field_ident, entity_type))
+        })
+        .collect();
 
-    let descriptor_index_lit = syn::LitInt::new(
-        &list_owner.descriptor_index.to_string(),
-        proc_macro2::Span::call_site(),
-    );
-    let list_owner_ident = list_owner.field_ident;
-    let element_collection_ident = element_collection.field_ident;
-    let list_owner_type = list_owner.entity_type;
-    let list_trait =
-        quote! { <#list_owner_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+    if list_owners.is_empty() {
+        return Ok(TokenStream::new());
+    }
+
+    let source_len_arms: Vec<_> = fields
+        .iter()
+        .filter(|field| {
+            has_attribute(&field.attrs, "problem_fact_collection")
+                || has_attribute(&field.attrs, "planning_entity_collection")
+                || has_attribute(&field.attrs, "planning_list_element_collection")
+        })
+        .filter_map(|field| {
+            let field_ident = field.ident.as_ref()?;
+            let field_name = field_ident.to_string();
+            Some(quote! { ::core::option::Option::Some(#field_name) => s.#field_ident.len(), })
+        })
+        .collect();
+
+    let source_element_arms: Vec<_> = fields
+        .iter()
+        .filter(|field| {
+            has_attribute(&field.attrs, "problem_fact_collection")
+                || has_attribute(&field.attrs, "planning_entity_collection")
+                || has_attribute(&field.attrs, "planning_list_element_collection")
+        })
+        .filter_map(|field| {
+            let field_ident = field.ident.as_ref()?;
+            let field_name = field_ident.to_string();
+            let value_expr = if has_attribute(&field.attrs, "planning_list_element_collection") {
+                quote! { s.#field_ident[idx] }
+            } else {
+                quote! { idx }
+            };
+            Some(quote! { ::core::option::Option::Some(#field_name) => { #value_expr } })
+        })
+        .collect();
+
+    let index_to_element_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, _, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return match #list_trait::STOCK_LIST_ELEMENT_SOURCE {
+                        #(#source_element_arms)*
+                        ::core::option::Option::Some(source) => {
+                            panic!(
+                                "stock list source field `{}` was not found on the planning solution",
+                                source
+                            );
+                        }
+                        ::core::option::Option::None => idx,
+                    };
+                }
+            }
+        })
+        .collect();
+
+    let list_len_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return self
+                        .#field_ident
+                        .get(entity_idx)
+                        .map_or(0, |entity| #list_trait::list_field(entity).len());
+                }
+            }
+        })
+        .collect();
+
+    let list_len_static_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return s
+                        .#field_ident
+                        .get(entity_idx)
+                        .map_or(0, |entity| #list_trait::list_field(entity).len());
+                }
+            }
+        })
+        .collect();
+
+    let list_remove_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return s
+                        .#field_ident
+                        .get_mut(entity_idx)
+                        .map(|entity| #list_trait::list_field_mut(entity).remove(pos));
+                }
+            }
+        })
+        .collect();
+
+    let list_insert_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    if let Some(entity) = s.#field_ident.get_mut(entity_idx) {
+                        #list_trait::list_field_mut(entity).insert(pos, val);
+                    }
+                    return;
+                }
+            }
+        })
+        .collect();
+
+    let list_get_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return s
+                        .#field_ident
+                        .get(entity_idx)
+                        .and_then(|entity| #list_trait::list_field(entity).get(pos).copied());
+                }
+            }
+        })
+        .collect();
+
+    let list_set_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    if let Some(entity) = s.#field_ident.get_mut(entity_idx) {
+                        let list = #list_trait::list_field_mut(entity);
+                        if pos < list.len() {
+                            list[pos] = val;
+                        }
+                    }
+                    return;
+                }
+            }
+        })
+        .collect();
+
+    let list_reverse_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    if let Some(entity) = s.#field_ident.get_mut(entity_idx) {
+                        #list_trait::list_field_mut(entity)[start..end].reverse();
+                    }
+                    return;
+                }
+            }
+        })
+        .collect();
+
+    let sublist_remove_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return s
+                        .#field_ident
+                        .get_mut(entity_idx)
+                        .map(|entity| #list_trait::list_field_mut(entity).drain(start..end).collect())
+                        .unwrap_or_default();
+                }
+            }
+        })
+        .collect();
+
+    let sublist_insert_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    if let Some(entity) = s.#field_ident.get_mut(entity_idx) {
+                        let list = #list_trait::list_field_mut(entity);
+                        for (i, item) in items.into_iter().enumerate() {
+                            list.insert(pos + i, item);
+                        }
+                    }
+                    return;
+                }
+            }
+        })
+        .collect();
+
+    let ruin_remove_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return #list_trait::list_field_mut(&mut s.#field_ident[entity_idx]).remove(pos);
+                }
+            }
+        })
+        .collect();
+
+    let ruin_insert_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    #list_trait::list_field_mut(&mut s.#field_ident[entity_idx]).insert(pos, val);
+                    return;
+                }
+            }
+        })
+        .collect();
+
+    let remove_for_construction_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return #list_trait::list_field_mut(&mut s.#field_ident[entity_idx]).remove(pos);
+                }
+            }
+        })
+        .collect();
+
+    let descriptor_index_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(idx, _, entity_type)| {
+            let descriptor_index_lit =
+                syn::LitInt::new(&idx.to_string(), proc_macro2::Span::call_site());
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return #descriptor_index_lit;
+                }
+            }
+        })
+        .collect();
+
+    let element_count_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, _, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return match #list_trait::STOCK_LIST_ELEMENT_SOURCE {
+                        #(#source_len_arms)*
+                        ::core::option::Option::Some(source) => {
+                            panic!(
+                                "stock list source field `{}` was not found on the planning solution",
+                                source
+                            );
+                        }
+                        ::core::option::Option::None => 0,
+                    };
+                }
+            }
+        })
+        .collect();
+
+    let assigned_elements_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return s
+                        .#field_ident
+                        .iter()
+                        .flat_map(|entity| #list_trait::list_field(entity).iter().copied())
+                        .collect();
+                }
+            }
+        })
+        .collect();
+
+    let n_entities_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    return s.#field_ident.len();
+                }
+            }
+        })
+        .collect();
+
+    let assign_element_branches: Vec<_> = list_owners
+        .iter()
+        .map(|(_, field_ident, entity_type)| {
+            let list_trait =
+                quote! { <#entity_type as ::solverforge::__internal::ListVariableEntity<Self>> };
+            quote! {
+                if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                    if let Some(entity) = s.#field_ident.get_mut(entity_idx) {
+                        #list_trait::list_field_mut(entity).push(elem);
+                    }
+                    return;
+                }
+            }
+        })
+        .collect();
 
     Ok(quote! {
         #[inline]
         pub fn list_len(&self, entity_idx: usize) -> usize {
-            self.#list_owner_ident
-                .get(entity_idx)
-                .map_or(0, |entity| #list_trait::list_field(entity).len())
+            #(#list_len_branches)*
+            0
         }
 
         #[inline]
         pub fn list_len_static(s: &Self, entity_idx: usize) -> usize {
-            s.#list_owner_ident
-                .get(entity_idx)
-                .map_or(0, |entity| #list_trait::list_field(entity).len())
+            #(#list_len_static_branches)*
+            0
         }
 
         #[inline]
         pub fn list_remove(s: &mut Self, entity_idx: usize, pos: usize) -> Option<usize> {
-            s.#list_owner_ident
-                .get_mut(entity_idx)
-                .map(|entity| #list_trait::list_field_mut(entity).remove(pos))
+            #(#list_remove_branches)*
+            ::core::option::Option::None
         }
 
         #[inline]
         pub fn list_insert(s: &mut Self, entity_idx: usize, pos: usize, val: usize) {
-            if let Some(entity) = s.#list_owner_ident.get_mut(entity_idx) {
-                #list_trait::list_field_mut(entity).insert(pos, val);
-            }
+            #(#list_insert_branches)*
         }
 
         #[inline]
         pub fn list_get(s: &Self, entity_idx: usize, pos: usize) -> Option<usize> {
-            s.#list_owner_ident
-                .get(entity_idx)
-                .and_then(|entity| #list_trait::list_field(entity).get(pos).copied())
+            #(#list_get_branches)*
+            ::core::option::Option::None
         }
 
         #[inline]
         pub fn list_set(s: &mut Self, entity_idx: usize, pos: usize, val: usize) {
-            if let Some(entity) = s.#list_owner_ident.get_mut(entity_idx) {
-                let list = #list_trait::list_field_mut(entity);
-                if pos < list.len() {
-                    list[pos] = val;
-                }
-            }
+            #(#list_set_branches)*
         }
 
         #[inline]
         pub fn list_reverse(s: &mut Self, entity_idx: usize, start: usize, end: usize) {
-            if let Some(entity) = s.#list_owner_ident.get_mut(entity_idx) {
-                #list_trait::list_field_mut(entity)[start..end].reverse();
-            }
+            #(#list_reverse_branches)*
         }
 
         #[inline]
@@ -407,10 +830,8 @@ fn generate_list_operations(
             start: usize,
             end: usize,
         ) -> Vec<usize> {
-            s.#list_owner_ident
-                .get_mut(entity_idx)
-                .map(|entity| #list_trait::list_field_mut(entity).drain(start..end).collect())
-                .unwrap_or_default()
+            #(#sublist_remove_branches)*
+            ::std::vec::Vec::new()
         }
 
         #[inline]
@@ -420,62 +841,67 @@ fn generate_list_operations(
             pos: usize,
             items: Vec<usize>,
         ) {
-            if let Some(entity) = s.#list_owner_ident.get_mut(entity_idx) {
-                let list = #list_trait::list_field_mut(entity);
-                for (i, item) in items.into_iter().enumerate() {
-                    list.insert(pos + i, item);
-                }
-            }
+            #(#sublist_insert_branches)*
         }
 
         #[inline]
         pub fn ruin_remove(s: &mut Self, entity_idx: usize, pos: usize) -> usize {
-            #list_trait::list_field_mut(&mut s.#list_owner_ident[entity_idx]).remove(pos)
+            #(#ruin_remove_branches)*
+            panic!("ruin_remove called on a planning solution without a stock list variable");
         }
 
         #[inline]
         pub fn ruin_insert(s: &mut Self, entity_idx: usize, pos: usize, val: usize) {
-            #list_trait::list_field_mut(&mut s.#list_owner_ident[entity_idx]).insert(pos, val);
+            #(#ruin_insert_branches)*
         }
 
         #[inline]
         pub fn list_remove_for_construction(s: &mut Self, entity_idx: usize, pos: usize) -> usize {
-            #list_trait::list_field_mut(&mut s.#list_owner_ident[entity_idx]).remove(pos)
+            #(#remove_for_construction_branches)*
+            panic!("list_remove_for_construction called on a planning solution without a stock list variable");
         }
 
         #[inline]
         pub fn index_to_element_static(s: &Self, idx: usize) -> usize {
-            s.#element_collection_ident[idx]
+            let element_count = Self::element_count(s);
+            if idx >= element_count {
+                panic!(
+                    "stock list element index {} is out of bounds for {} elements",
+                    idx,
+                    element_count
+                );
+            }
+            #(#index_to_element_branches)*
+            idx
         }
 
         #[inline]
-        pub const fn list_variable_descriptor_index() -> usize {
-            #descriptor_index_lit
+        pub fn list_variable_descriptor_index() -> usize {
+            #(#descriptor_index_branches)*
+            usize::MAX
         }
 
         #[inline]
         pub fn element_count(s: &Self) -> usize {
-            s.#element_collection_ident.len()
+            #(#element_count_branches)*
+            0
         }
 
         #[inline]
         pub fn assigned_elements(s: &Self) -> Vec<usize> {
-            s.#list_owner_ident
-                .iter()
-                .flat_map(|entity| #list_trait::list_field(entity).iter().copied())
-                .collect()
+            #(#assigned_elements_branches)*
+            ::std::vec::Vec::new()
         }
 
         #[inline]
         pub fn n_entities(s: &Self) -> usize {
-            s.#list_owner_ident.len()
+            #(#n_entities_branches)*
+            0
         }
 
         #[inline]
         pub fn assign_element(s: &mut Self, entity_idx: usize, elem: usize) {
-            if let Some(entity) = s.#list_owner_ident.get_mut(entity_idx) {
-                #list_trait::list_field_mut(entity).push(elem);
-            }
+            #(#assign_element_branches)*
         }
     })
 }
@@ -526,19 +952,163 @@ fn generate_runtime_phase_support(
         return TokenStream::new();
     }
 
-    if let Some((list_owner, _element_collection)) = find_list_runtime_config(fields)
-        .expect("list runtime config validation should have succeeded")
-    {
-        let list_owner_type = list_owner.entity_type;
-        let list_trait = quote! {
-            <#list_owner_type as ::solverforge::__internal::ListVariableEntity<#solution_name>>
-        };
-        let descriptor_index_lit = syn::LitInt::new(
-            &list_owner.descriptor_index.to_string(),
-            proc_macro2::Span::call_site(),
-        );
+    let list_owners: Vec<_> = fields
+        .iter()
+        .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
+        .enumerate()
+        .filter_map(|(idx, field)| {
+            let field_type = extract_collection_inner_type(&field.ty)?;
+            Some((idx, field_type))
+        })
+        .collect();
+
+    if !list_owners.is_empty() {
+        let cross_enum_ident = format_ident!("__{}StockCrossDistanceMeter", solution_name);
+        let intra_enum_ident = format_ident!("__{}StockIntraDistanceMeter", solution_name);
+
+        let cross_variants: Vec<_> = list_owners
+            .iter()
+            .map(|(idx, field_type)| {
+                let variant = format_ident!("Entity{idx}");
+                quote! {
+                    #variant(
+                        <#field_type as ::solverforge::__internal::ListVariableEntity<#solution_name>>::CrossDistanceMeter
+                    )
+                }
+            })
+            .collect();
+        let intra_variants: Vec<_> = list_owners
+            .iter()
+            .map(|(idx, field_type)| {
+                let variant = format_ident!("Entity{idx}");
+                quote! {
+                    #variant(
+                        <#field_type as ::solverforge::__internal::ListVariableEntity<#solution_name>>::IntraDistanceMeter
+                    )
+                }
+            })
+            .collect();
+        let cross_match_arms: Vec<_> = list_owners
+            .iter()
+            .map(|(idx, _)| {
+                let variant = format_ident!("Entity{idx}");
+                quote! {
+                    Self::#variant(meter) => meter.distance(solution, src_entity, src_pos, dst_entity, dst_pos),
+                }
+            })
+            .collect();
+        let intra_match_arms: Vec<_> = list_owners
+            .iter()
+            .map(|(idx, _)| {
+                let variant = format_ident!("Entity{idx}");
+                quote! {
+                    Self::#variant(meter) => meter.distance(solution, src_entity, src_pos, dst_entity, dst_pos),
+                }
+            })
+            .collect();
+        let list_runtime_branches: Vec<_> = list_owners
+            .iter()
+            .map(|(idx, field_type)| {
+                let variant = format_ident!("Entity{idx}");
+                let descriptor_index_lit =
+                    syn::LitInt::new(&idx.to_string(), proc_macro2::Span::call_site());
+                let list_trait = quote! {
+                    <#field_type as ::solverforge::__internal::ListVariableEntity<#solution_name>>
+                };
+                quote! {
+                    if #list_trait::HAS_STOCK_LIST_VARIABLE {
+                        let metadata = #list_trait::list_metadata();
+                        let list_ctx = ::solverforge::__internal::ListContext::new(
+                            Self::list_len_static,
+                            Self::list_remove,
+                            Self::list_insert,
+                            Self::list_get,
+                            Self::list_set,
+                            Self::list_reverse,
+                            Self::sublist_remove,
+                            Self::sublist_insert,
+                            Self::ruin_remove,
+                            Self::ruin_insert,
+                            Self::n_entities,
+                            #cross_enum_ident::#variant(metadata.cross_distance_meter.clone()),
+                            #intra_enum_ident::#variant(metadata.intra_distance_meter.clone()),
+                            #list_trait::STOCK_LIST_VARIABLE_NAME,
+                            #descriptor_index_lit,
+                        );
+                        let construction = ::solverforge::__internal::ListConstructionArgs {
+                            element_count: Self::element_count,
+                            assigned_elements: Self::assigned_elements,
+                            entity_count: Self::n_entities,
+                            list_len: Self::list_len_static,
+                            list_insert: Self::list_insert,
+                            list_remove: Self::list_remove_for_construction,
+                            index_to_element: Self::index_to_element_static,
+                            descriptor_index: #descriptor_index_lit,
+                            depot_fn: metadata.cw_depot_fn,
+                            distance_fn: metadata.cw_distance_fn,
+                            element_load_fn: metadata.cw_element_load_fn,
+                            capacity_fn: metadata.cw_capacity_fn,
+                            assign_route_fn: metadata.cw_assign_route_fn,
+                            merge_feasible_fn: metadata.merge_feasible_fn,
+                            k_opt_get_route: metadata.k_opt_get_route,
+                            k_opt_set_route: metadata.k_opt_set_route,
+                            k_opt_depot_fn: metadata.k_opt_depot_fn,
+                            k_opt_distance_fn: metadata.k_opt_distance_fn,
+                            k_opt_feasible_fn: metadata.k_opt_feasible_fn,
+                        };
+                        return ::solverforge::__internal::build_phases(
+                            config,
+                            &descriptor,
+                            ::core::option::Option::Some(&list_ctx),
+                            ::core::option::Option::Some(construction),
+                            ::core::option::Option::Some(#list_trait::STOCK_LIST_VARIABLE_NAME),
+                        );
+                    }
+                }
+            })
+            .collect();
 
         return quote! {
+            #[derive(Clone, Debug)]
+            enum #cross_enum_ident {
+                #(#cross_variants),*
+            }
+
+            impl ::solverforge::CrossEntityDistanceMeter<#solution_name> for #cross_enum_ident {
+                fn distance(
+                    &self,
+                    solution: &#solution_name,
+                    src_entity: usize,
+                    src_pos: usize,
+                    dst_entity: usize,
+                    dst_pos: usize,
+                ) -> f64 {
+                    match self {
+                        #(#cross_match_arms)*
+                    }
+                }
+            }
+
+            #[derive(Clone, Debug)]
+            enum #intra_enum_ident {
+                #(#intra_variants),*
+            }
+
+            impl ::solverforge::CrossEntityDistanceMeter<#solution_name> for #intra_enum_ident {
+                fn distance(
+                    &self,
+                    solution: &#solution_name,
+                    src_entity: usize,
+                    src_pos: usize,
+                    dst_entity: usize,
+                    dst_pos: usize,
+                ) -> f64 {
+                    match self {
+                        #(#intra_match_arms)*
+                    }
+                }
+            }
+
             impl #solution_name {
                 const fn __solverforge_default_time_limit_secs() -> u64 {
                     60
@@ -570,56 +1140,18 @@ fn generate_runtime_phase_support(
                     ::solverforge::__internal::UnifiedRuntimePhase<
                         #solution_name,
                         usize,
-                        #list_trait::CrossDistanceMeter,
-                        #list_trait::IntraDistanceMeter,
+                        #cross_enum_ident,
+                        #intra_enum_ident,
                     >
                 > {
                     let descriptor = Self::descriptor();
-                    let metadata = #list_trait::list_metadata();
-                    let list_ctx = ::solverforge::__internal::ListContext::new(
-                        Self::list_len_static,
-                        Self::list_remove,
-                        Self::list_insert,
-                        Self::list_get,
-                        Self::list_set,
-                        Self::list_reverse,
-                        Self::sublist_remove,
-                        Self::sublist_insert,
-                        Self::ruin_remove,
-                        Self::ruin_insert,
-                        Self::n_entities,
-                        metadata.cross_distance_meter.clone(),
-                        metadata.intra_distance_meter.clone(),
-                        #list_trait::STOCK_LIST_VARIABLE_NAME,
-                        #descriptor_index_lit,
-                    );
-                    let construction = ::solverforge::__internal::ListConstructionArgs {
-                        element_count: Self::element_count,
-                        assigned_elements: Self::assigned_elements,
-                        entity_count: Self::n_entities,
-                        list_len: Self::list_len_static,
-                        list_insert: Self::list_insert,
-                        list_remove: Self::list_remove_for_construction,
-                        index_to_element: Self::index_to_element_static,
-                        descriptor_index: #descriptor_index_lit,
-                        depot_fn: metadata.cw_depot_fn,
-                        distance_fn: metadata.cw_distance_fn,
-                        element_load_fn: metadata.cw_element_load_fn,
-                        capacity_fn: metadata.cw_capacity_fn,
-                        assign_route_fn: metadata.cw_assign_route_fn,
-                        merge_feasible_fn: metadata.merge_feasible_fn,
-                        k_opt_get_route: metadata.k_opt_get_route,
-                        k_opt_set_route: metadata.k_opt_set_route,
-                        k_opt_depot_fn: metadata.k_opt_depot_fn,
-                        k_opt_distance_fn: metadata.k_opt_distance_fn,
-                        k_opt_feasible_fn: metadata.k_opt_feasible_fn,
-                    };
+                    #(#list_runtime_branches)*
                     ::solverforge::__internal::build_phases(
                         config,
                         &descriptor,
-                        ::core::option::Option::Some(&list_ctx),
-                        ::core::option::Option::Some(construction),
-                        ::core::option::Option::Some(#list_trait::STOCK_LIST_VARIABLE_NAME),
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
+                        ::core::option::Option::None,
                     )
                 }
             }
@@ -771,21 +1303,39 @@ fn generate_shadow_support(
             "#[shadow_variable_updates(...)] requires `list_owner = \"entity_collection_field\"` when shadow updates are configured",
         ));
     };
-    let Some(element_collection) = find_list_element_collection_config(fields)?
-        .filter(|element_collection| *list_owner.field_ident == element_collection.owner_field)
-    else {
+
+    let Some(runtime_config) = find_list_runtime_config(fields)? else {
         return Err(Error::new(
             proc_macro2::Span::call_site(),
             format!(
-                "planning solution with list owner `{}` requires a `#[planning_list_element_collection(owner = \"{}\")]` field of type Vec<usize>",
+                "planning solution with list owner `{}` requires a `#[planning_entity_collection]` or `#[problem_fact_collection]` field named `{}`",
                 list_owner.field_ident,
                 list_owner.field_ident,
             ),
         ));
     };
+    if runtime_config.list_owner.field_ident != list_owner.field_ident {
+        return Err(Error::new(
+            proc_macro2::Span::call_site(),
+            format!(
+                "#[shadow_variable_updates(list_owner = \"{}\")] does not match the inferred list owner `{}`",
+                list_owner.field_ident,
+                runtime_config.list_owner.field_ident,
+            ),
+        ));
+    }
+    if runtime_config.element_collection.kind == ListElementCollectionKind::LegacyListCollection {
+        return Err(Error::new(
+            proc_macro2::Span::call_site(),
+            format!(
+                "planning solution with list owner `{}` requires a matching `#[planning_entity_collection]` or `#[problem_fact_collection]` field for shadow updates",
+                list_owner.field_ident,
+            ),
+        ));
+    }
 
     let list_owner_ident = list_owner.field_ident;
-    let element_collection_ident = element_collection.field_ident;
+    let element_collection_ident = runtime_config.element_collection.field_ident;
     let list_owner_type = list_owner.entity_type;
     let list_trait =
         quote! { <#list_owner_type as ::solverforge::__internal::ListVariableEntity<Self>> };
