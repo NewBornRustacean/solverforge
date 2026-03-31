@@ -171,7 +171,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::heuristic::selector::{FromSolutionEntitySelector, StaticTypedValueSelector};
+    use crate::heuristic::selector::{FromSolutionEntitySelector, StaticValueSelector};
     use crate::phase::construction::{BestFitForager, FirstFitForager, QueuedEntityPlacer};
     use crate::test_utils::{
         create_simple_nqueens_director, get_queen_row, set_queen_row, NQueensSolution,
@@ -183,10 +183,10 @@ mod tests {
         NQueensSolution,
         i64,
         FromSolutionEntitySelector,
-        StaticTypedValueSelector<NQueensSolution, i64>,
+        StaticValueSelector<NQueensSolution, i64>,
     > {
         let es = FromSolutionEntitySelector::new(0);
-        let vs = StaticTypedValueSelector::new(values);
+        let vs = StaticValueSelector::new(values);
         QueuedEntityPlacer::new(es, vs, get_queen_row, set_queen_row, 0, "row")
     }
 
