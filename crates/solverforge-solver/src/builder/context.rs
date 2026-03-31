@@ -21,31 +21,6 @@ impl<S, T: CrossEntityDistanceMeter<S>> ListPositionDistanceMeter<S> for IntraDi
     }
 }
 
-/// Function-pointer context for basic (non-list) variable solvers.
-///
-/// Carries all domain callbacks needed to construct move selectors
-/// without requiring `dyn` or closures.
-pub struct StandardContext<S> {
-    pub get_variable: fn(&S, usize) -> Option<usize>,
-    pub set_variable: fn(&mut S, usize, Option<usize>),
-    // All valid values for the variable.
-    pub values: Vec<usize>,
-    // Descriptor index for the entity collection.
-    pub descriptor_index: usize,
-    // Variable field name.
-    pub variable_field: &'static str,
-}
-
-impl<S> std::fmt::Debug for StandardContext<S> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StandardContext")
-            .field("descriptor_index", &self.descriptor_index)
-            .field("variable_field", &self.variable_field)
-            .field("values_len", &self.values.len())
-            .finish()
-    }
-}
-
 /// Function-pointer context for list variable solvers.
 ///
 /// Carries all domain callbacks and distance meters needed to construct

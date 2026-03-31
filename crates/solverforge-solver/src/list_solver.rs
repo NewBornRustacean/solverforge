@@ -11,32 +11,20 @@ Logging levels:
 - **TRACE**: Move evaluation details
 */
 
-use solverforge_config::{
-    ConstructionHeuristicConfig, ConstructionHeuristicType, PhaseConfig, SolverConfig,
-};
+use solverforge_config::{ConstructionHeuristicConfig, ConstructionHeuristicType};
 use solverforge_core::domain::PlanningSolution;
-use solverforge_core::score::{ParseableScore, Score};
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::builder::list_selector::ListLeafSelector;
-use crate::builder::{
-    AcceptorBuilder, AnyAcceptor, AnyForager, ForagerBuilder, ListContext, ListMoveSelectorBuilder,
-};
-use crate::heuristic::r#move::ListMoveImpl;
-use crate::heuristic::selector::decorator::VecUnionSelector;
 use crate::heuristic::selector::nearby_list_change::CrossEntityDistanceMeter;
 use crate::manager::{
     ListCheapestInsertionPhase, ListClarkeWrightPhase, ListKOptPhase, ListRegretInsertionPhase,
 };
-use crate::phase::localsearch::{AcceptedCountForager, LateAcceptanceAcceptor, LocalSearchPhase};
 use crate::scope::{PhaseScope, SolverScope, StepScope};
 
 /// Hidden list metadata emitted by `#[planning_entity]` and consumed by
 /// macro-generated solve code.
 pub struct ListVariableMetadata<S, DM, IDM> {
-    pub variable_name: &'static str,
-    pub element_collection: &'static str,
     pub cross_distance_meter: DM,
     pub intra_distance_meter: IDM,
     pub merge_feasible_fn: Option<fn(&S, &[usize]) -> bool>,
@@ -60,9 +48,7 @@ pub trait ListVariableEntity<S> {
     type CrossDistanceMeter: CrossEntityDistanceMeter<S> + Clone + fmt::Debug;
     type IntraDistanceMeter: CrossEntityDistanceMeter<S> + Clone + fmt::Debug + 'static;
 
-    const STOCK_LIST_VARIABLE_COUNT: usize;
     const STOCK_LIST_VARIABLE_NAME: &'static str;
-    const STOCK_LIST_ELEMENT_COLLECTION: &'static str;
 
     fn list_field(entity: &Self) -> &[usize];
     fn list_field_mut(entity: &mut Self) -> &mut Vec<usize>;
@@ -72,8 +58,6 @@ pub trait ListVariableEntity<S> {
 impl<S, DM, IDM> ListVariableMetadata<S, DM, IDM> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        variable_name: &'static str,
-        element_collection: &'static str,
         cross_distance_meter: DM,
         intra_distance_meter: IDM,
         merge_feasible_fn: Option<fn(&S, &[usize]) -> bool>,
@@ -89,8 +73,6 @@ impl<S, DM, IDM> ListVariableMetadata<S, DM, IDM> {
         k_opt_feasible_fn: Option<fn(&S, usize, &[usize]) -> bool>,
     ) -> Self {
         Self {
-            variable_name,
-            element_collection,
             cross_distance_meter,
             intra_distance_meter,
             merge_feasible_fn,
@@ -105,53 +87,6 @@ impl<S, DM, IDM> ListVariableMetadata<S, DM, IDM> {
             k_opt_distance_fn,
             k_opt_feasible_fn,
             _phantom: PhantomData,
-        }
-    }
-}
-
-// Type alias for the config-driven list local search phase
-type ConfigListLocalSearch<S, V, DM, IDM> = LocalSearchPhase<
-    S,
-    ListMoveImpl<S, V>,
-    VecUnionSelector<S, ListMoveImpl<S, V>, ListLeafSelector<S, V, DM, IDM>>,
-    AnyAcceptor<S>,
-    AnyForager<S>,
->;
-
-// Type alias for the default list local search phase
-type DefaultListLocalSearch<S, V, DM, IDM> = LocalSearchPhase<
-    S,
-    ListMoveImpl<S, V>,
-    VecUnionSelector<S, ListMoveImpl<S, V>, ListLeafSelector<S, V, DM, IDM>>,
-    LateAcceptanceAcceptor<S>,
-    AcceptedCountForager<S>,
->;
-
-// Monomorphized local search enum for list solver.
-// Variants intentionally differ in size; this enum is constructed once per solve, not in hot paths.
-#[allow(clippy::large_enum_variant)]
-pub enum ListLocalSearch<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    V: Clone + PartialEq + Send + Sync + fmt::Debug + 'static,
-    DM: CrossEntityDistanceMeter<S>,
-    IDM: CrossEntityDistanceMeter<S> + 'static,
-{
-    Default(DefaultListLocalSearch<S, V, DM, IDM>),
-    Config(ConfigListLocalSearch<S, V, DM, IDM>),
-}
-
-impl<S, V, DM, IDM> fmt::Debug for ListLocalSearch<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    V: Clone + PartialEq + Send + Sync + fmt::Debug + 'static,
-    DM: CrossEntityDistanceMeter<S> + fmt::Debug,
-    IDM: CrossEntityDistanceMeter<S> + fmt::Debug + 'static,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Default(phase) => write!(f, "ListLocalSearch::Default({phase:?})"),
-            Self::Config(phase) => write!(f, "ListLocalSearch::Config({phase:?})"),
         }
     }
 }
@@ -188,29 +123,6 @@ where
             }
             Self::KOpt(phase) => write!(f, "ListConstruction::KOpt({phase:?})"),
         }
-    }
-}
-
-impl<S, V, D, ProgressCb, DM, IDM> crate::phase::Phase<S, D, ProgressCb>
-    for ListLocalSearch<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    S::Score: Score + ParseableScore,
-    V: Clone + Copy + PartialEq + Eq + std::hash::Hash + Send + Sync + fmt::Debug + 'static,
-    D: solverforge_scoring::Director<S>,
-    ProgressCb: crate::scope::ProgressCallback<S>,
-    DM: CrossEntityDistanceMeter<S> + Clone + fmt::Debug,
-    IDM: CrossEntityDistanceMeter<S> + Clone + fmt::Debug + 'static,
-{
-    fn solve(&mut self, solver_scope: &mut crate::scope::SolverScope<'_, S, D, ProgressCb>) {
-        match self {
-            Self::Default(phase) => phase.solve(solver_scope),
-            Self::Config(phase) => phase.solve(solver_scope),
-        }
-    }
-
-    fn phase_type_name(&self) -> &'static str {
-        "ListLocalSearch"
     }
 }
 
@@ -551,54 +463,4 @@ mod tests {
             .unwrap_or("");
         assert!(message.contains("must be normalized before list construction"));
     }
-}
-
-// Builds the local search phase from config or defaults.
-pub fn build_list_local_search<S, V, DM, IDM>(
-    config: &SolverConfig,
-    ctx: &ListContext<S, V, DM, IDM>,
-) -> ListLocalSearch<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    S::Score: Score + ParseableScore,
-    V: Clone + Copy + PartialEq + Eq + std::hash::Hash + Send + Sync + fmt::Debug + 'static,
-    DM: CrossEntityDistanceMeter<S> + Clone,
-    IDM: CrossEntityDistanceMeter<S> + Clone,
-{
-    let ls_config = config.phases.iter().find_map(|p| {
-        if let PhaseConfig::LocalSearch(ls) = p {
-            Some(ls)
-        } else {
-            None
-        }
-    });
-
-    let Some(ls) = ls_config else {
-        // Default: LA(400) + AcceptedCount(4) + Union(NearbyChange(20), NearbySwap(20), Reverse)
-        let acceptor = LateAcceptanceAcceptor::<S>::new(400);
-        let forager = AcceptedCountForager::new(4);
-        let move_selector = ListMoveSelectorBuilder::build(None, ctx);
-        return ListLocalSearch::Default(LocalSearchPhase::new(
-            move_selector,
-            acceptor,
-            forager,
-            None,
-        ));
-    };
-
-    let acceptor = ls
-        .acceptor
-        .as_ref()
-        .map(|ac| AcceptorBuilder::build::<S>(ac))
-        .unwrap_or_else(|| AnyAcceptor::LateAcceptance(LateAcceptanceAcceptor::<S>::new(400)));
-
-    let forager = ForagerBuilder::build::<S>(ls.forager.as_ref());
-    let move_selector = ListMoveSelectorBuilder::build(ls.move_selector.as_ref(), ctx);
-
-    ListLocalSearch::Config(LocalSearchPhase::new(
-        move_selector,
-        acceptor,
-        forager,
-        None,
-    ))
 }

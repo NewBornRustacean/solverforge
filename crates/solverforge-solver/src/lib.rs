@@ -35,7 +35,7 @@ pub mod unified_search;
 
 pub use builder::{
     AcceptorBuilder, AnyAcceptor, AnyForager, ForagerBuilder, ListContext, ListLeafSelector,
-    ListMoveSelectorBuilder, StandardContext, StandardLeafSelector, StandardMoveSelectorBuilder,
+    ListMoveSelectorBuilder,
 };
 pub use descriptor_standard::{
     build_descriptor_construction, build_descriptor_move_selector, descriptor_has_bindings,
@@ -140,8 +140,7 @@ pub use unified_search::{
 };
 
 pub use list_solver::{
-    build_list_construction, build_list_local_search, ListConstruction, ListLocalSearch,
-    ListVariableEntity, ListVariableMetadata,
+    build_list_construction, ListConstruction, ListVariableEntity, ListVariableMetadata,
 };
 pub use run::{log_solve_start, run_solver};
 pub use runtime::{

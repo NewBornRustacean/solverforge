@@ -133,7 +133,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 | `parse_shadow_config` | `fn(&[Attribute]) -> ShadowConfig` | Parses `#[shadow_variable_updates(...)]` |
 | `find_list_owner_config` | `fn(&ShadowConfig, &Fields) -> Result<Option<ListOwnerConfig>, Error>` | Resolves shadow `list_owner` to the entity collection field and descriptor index |
 | `find_list_element_collection_config` | `fn(&Fields) -> Result<Option<ListElementCollectionConfig>, Error>` | Resolves `#[planning_list_element_collection(owner = "...")]` to the concrete `Vec<usize>` field |
-| `find_stock_list_config` | `fn(&Fields) -> Result<Option<(ListOwnerConfig, ListElementCollectionConfig)>, Error>` | Resolves stock list ownership and the direct list element collection field without consulting `shadow_variable_updates` |
+| `find_list_runtime_config` | `fn(&Fields) -> Result<Option<(ListOwnerConfig, ListElementCollectionConfig)>, Error>` | Resolves list ownership and the direct list element collection field without consulting `shadow_variable_updates` |
 | `shadow_updates_requested` | `fn(&ShadowConfig) -> bool` | Detects whether real shadow update work is configured |
 | `generate_list_operations` | `fn(&ShadowConfig, &Fields, &Ident) -> Result<TokenStream, Error>` | Generates list variable methods from the entity-side stock registry |
 | `generate_solvable_solution` | `fn(&Ident, &Option<String>) -> TokenStream` | Generates SolvableSolution/Solvable/Analyzable impls |

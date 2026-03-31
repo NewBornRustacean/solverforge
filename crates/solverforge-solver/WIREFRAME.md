@@ -23,7 +23,7 @@ Solver engine: phases, moves, selectors, acceptors, foragers, termination, and s
 src/
 ├── lib.rs                               — Crate root; module declarations, re-exports
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
-├── list_solver.rs                       — List construction/local-search builders, list phase enums, hidden macro metadata + `ListVariableEntity`
+├── list_solver.rs                       — List construction builders, list phase enums, hidden macro metadata + `ListVariableEntity`
 ├── unified_search.rs                    — Unified move envelope, selector builder, local-search/VND builders
 ├── runtime.rs                           — Unified runtime phase enum and phase-sequence builder
 ├── run.rs                               — AnyTermination, build_termination, run_solver()
@@ -31,8 +31,7 @@ src/
 │   ├── mod.rs                           — Re-exports from all builder submodules
 │   ├── acceptor.rs                      — AnyAcceptor<S> enum, AcceptorBuilder
 │   ├── forager.rs                       — AnyForager<S> enum, ForagerBuilder
-│   ├── context.rs                       — StandardContext<S>, ListContext<S, V, DM, IDM>, IntraDistanceAdapter<T>
-│   ├── standard_selector.rs               — StandardLeafSelector<S> enum, StandardMoveSelectorBuilder
+│   ├── context.rs                       — ListContext<S, V, DM, IDM>, IntraDistanceAdapter<T>
 │   └── list_selector.rs                — ListLeafSelector<S, V, DM, IDM> enum, ListMoveSelectorBuilder
 ├── stats.rs                             — SolverStats, PhaseStats
 ├── test_utils.rs                        — TestSolution, TestDirector, NQueens helpers
@@ -711,7 +710,7 @@ Aggregate and per-phase metrics: step count, moves evaluated/accepted, score cal
 
 ### `list_solver.rs`
 
-Public helpers: `ListConstruction<S, V>`, `ListLocalSearch<S, V, DM, IDM>`, `ListVariableMetadata<S, DM, IDM>`, `ListVariableEntity<S>`, `build_list_construction(config: Option<&ConstructionHeuristicConfig>, ...)`, `build_list_local_search()`
+Public helpers: `ListConstruction<S, V>`, `ListVariableMetadata<S, DM, IDM>`, `ListVariableEntity<S>`, `build_list_construction(config: Option<&ConstructionHeuristicConfig>, ...)`
 
 ### `unified_search.rs`
 

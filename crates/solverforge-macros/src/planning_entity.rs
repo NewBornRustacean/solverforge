@@ -480,13 +480,8 @@ fn generate_list_metadata(
     entity_name: &Ident,
     list_variables: &[&syn::Field],
 ) -> Result<TokenStream, Error> {
-    let list_count = list_variables.len();
-    let count_lit = syn::LitInt::new(&list_count.to_string(), proc_macro2::Span::call_site());
-
     let Some(field) = list_variables.first().copied() else {
-        return Ok(quote! {
-            pub const __SOLVERFORGE_LIST_VARIABLE_COUNT: usize = #count_lit;
-        });
+        return Ok(TokenStream::new());
     };
 
     let field_name = field.ident.as_ref().unwrap();
@@ -582,9 +577,7 @@ fn generate_list_metadata(
     )?;
 
     Ok(quote! {
-        pub const __SOLVERFORGE_LIST_VARIABLE_COUNT: usize = #count_lit;
         pub const __SOLVERFORGE_LIST_VARIABLE_NAME: &'static str = #field_name_str;
-        pub const __SOLVERFORGE_LIST_ELEMENT_COLLECTION: &'static str = #element_collection;
 
         #[inline]
         pub fn __solverforge_list_field(entity: &Self) -> &[usize] {
@@ -603,9 +596,8 @@ fn generate_list_metadata(
             #intra_dm_ty,
         > {
             let _ = stringify!(#entity_name);
+            let _ = #element_collection;
             ::solverforge::__internal::ListVariableMetadata::new(
-                Self::__SOLVERFORGE_LIST_VARIABLE_NAME,
-                Self::__SOLVERFORGE_LIST_ELEMENT_COLLECTION,
                 #cross_dm_expr,
                 #intra_dm_expr,
                 #merge_feasible,
@@ -655,10 +647,7 @@ fn generate_list_trait_impl(
             type CrossDistanceMeter = #cross_dm_ty;
             type IntraDistanceMeter = #intra_dm_ty;
 
-            const STOCK_LIST_VARIABLE_COUNT: usize = Self::__SOLVERFORGE_LIST_VARIABLE_COUNT;
             const STOCK_LIST_VARIABLE_NAME: &'static str = Self::__SOLVERFORGE_LIST_VARIABLE_NAME;
-            const STOCK_LIST_ELEMENT_COLLECTION: &'static str =
-                Self::__SOLVERFORGE_LIST_ELEMENT_COLLECTION;
 
             #[inline]
             fn list_field(entity: &Self) -> &[usize] {

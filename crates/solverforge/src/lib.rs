@@ -164,13 +164,9 @@ pub mod __internal {
     };
     pub use solverforge_solver::scope::{ProgressCallback, SolverScope};
     pub use solverforge_solver::{
-        build_descriptor_construction, build_descriptor_move_selector, build_list_construction,
-        build_phases, build_unified_local_search, build_unified_move_selector, build_unified_vnd,
-        descriptor_has_bindings, log_solve_start, run_solver, DescriptorConstruction,
-        DynamicVndPhase, ListConstruction, ListConstructionArgs, ListVariableEntity,
-        ListVariableMetadata, Phase, PhaseSequence, RuntimePhase, SeedBestSolutionPhase,
-        SolverEvent, SolverTelemetry, UnifiedConstruction, UnifiedLocalSearch, UnifiedMove,
-        UnifiedNeighborhood, UnifiedRuntimePhase, UnifiedVnd,
+        build_phases, descriptor_has_bindings, log_solve_start, run_solver, ListConstructionArgs,
+        ListVariableEntity, ListVariableMetadata, PhaseSequence, SolverEvent, SolverTelemetry,
+        UnifiedRuntimePhase,
     };
 
     // Config
