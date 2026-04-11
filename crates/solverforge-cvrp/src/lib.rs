@@ -157,7 +157,7 @@ Distance meters
 */
 
 // Cross-entity distance meter backed by the solution's distance matrix.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct MatrixDistanceMeter;
 
 impl<S: VrpSolution> CrossEntityDistanceMeter<S> for MatrixDistanceMeter {
@@ -181,7 +181,7 @@ impl<S: VrpSolution> CrossEntityDistanceMeter<S> for MatrixDistanceMeter {
 }
 
 // Intra-entity distance meter backed by the solution's distance matrix.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct MatrixIntraDistanceMeter;
 
 impl<S: VrpSolution> CrossEntityDistanceMeter<S> for MatrixIntraDistanceMeter {
