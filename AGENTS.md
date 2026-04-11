@@ -134,4 +134,4 @@ Avoid `#[derive(Clone)]` on generic types when it would introduce unnecessary bo
 - `make test`
 - `make pre-release`
 
-Minimum supported Rust version: `1.80+`
+Minimum supported Rust version: `1.92+`
