@@ -117,17 +117,34 @@ where
         &'a self,
         score_director: &'a D,
     ) -> impl Iterator<Item = UnifiedMove<S, V>> + 'a {
-        let moves: Vec<_> = match self {
-            Self::Standard(selector) => selector
-                .iter_moves(score_director)
-                .map(UnifiedMove::Standard)
-                .collect(),
-            Self::List(selector) => selector
-                .iter_moves(score_director)
-                .map(UnifiedMove::List)
-                .collect(),
-        };
-        moves.into_iter()
+        enum UnifiedNeighborhoodIter<A, B> {
+            Standard(A),
+            List(B),
+        }
+
+        impl<T, A, B> Iterator for UnifiedNeighborhoodIter<A, B>
+        where
+            A: Iterator<Item = T>,
+            B: Iterator<Item = T>,
+        {
+            type Item = T;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                match self {
+                    Self::Standard(iter) => iter.next(),
+                    Self::List(iter) => iter.next(),
+                }
+            }
+        }
+
+        match self {
+            Self::Standard(selector) => UnifiedNeighborhoodIter::Standard(
+                selector.iter_moves(score_director).map(UnifiedMove::Standard),
+            ),
+            Self::List(selector) => {
+                UnifiedNeighborhoodIter::List(selector.iter_moves(score_director).map(UnifiedMove::List))
+            }
+        }
     }
 
     fn size<D: solverforge_scoring::Director<S>>(&self, score_director: &D) -> usize {
