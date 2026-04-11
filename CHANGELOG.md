@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.2](///compare/v0.8.1...v0.8.2) (2026-04-11)
+
+
+### Features
+
+* **console:** use emerald truecolor banner output 0f08921
+* **macros:** support solution trait bounds on list variables 1463cca
+* **solver:** make retained phases interruptible a34d02c
+
+
+### Bug Fixes
+
+* **construction:** retry interrupted placements after pause f24a6a0
+* **cvrp:** derive debug for matrix distance meters b0e4e33
+* **runtime:** serialize pause lifecycle publication 4e2e3f8
+
 ## [0.8.1](///compare/v0.8.0...v0.8.1) (2026-04-07)
 
 ## [0.8.0](///compare/v0.7.1...v0.8.0) (2026-04-06)
