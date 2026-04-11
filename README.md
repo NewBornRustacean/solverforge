@@ -44,6 +44,7 @@ The current templates cover standard-variable and list-heavy planning models, an
 
 - `README.md` is the user-facing entry point for the workspace and generated-project integration model.
 - `docs/extend-solver.md` and `docs/extend-domain.md` cover scaffold extension workflows.
+- `docs/lifecycle-pause-resume-contract.md` defines the retained lifecycle contract, including exact pause/resume semantics, snapshot identity, and terminal-state cleanup rules.
 - `docs/typed-contract-audit.md` records the current neutral selector and extractor naming model, including the `EntityCollectionExtractor`, `ValueSelector`, and `MoveSelector` surface adopted in `0.7.0`.
 - `crates/*/WIREFRAME.md` files are the canonical public API maps for each crate.
 - `AGENTS.md` defines repository-level engineering and documentation expectations for coding agents.
@@ -427,7 +428,7 @@ let analysis = MANAGER.analyze_snapshot(job_id, Some(snapshot.snapshot_revision)
 MANAGER.delete(job_id).unwrap();
 ```
 
-Lifecycle events carry `job_id`, monotonic `event_sequence`, `snapshot_revision`, telemetry, and authoritative lifecycle state. Progress metadata reflects the current runtime state, including `PauseRequested` while a pause is settling. Snapshot analysis is always bound to a retained `snapshot_revision`, whether the job is still solving, pause-requested, paused, or already terminal, and analysis availability must never be treated as proof that a job has completed. `delete` is reserved for cleanup of terminal jobs only: it removes the retained job from the public API immediately, and the underlying slot becomes reusable once the worker has fully exited.
+Lifecycle events carry `job_id`, monotonic `event_sequence`, `snapshot_revision`, telemetry, and authoritative lifecycle state. Progress metadata reflects the current runtime state, including `PauseRequested` while a pause is settling. After `pause()` is accepted, the stream delivers `PauseRequested` before any later worker-side event already published in `PauseRequested` state. Snapshot analysis is always bound to a retained `snapshot_revision`, whether the job is still solving, pause-requested, paused, or already terminal, and analysis availability must never be treated as proof that a job has completed. `delete` is reserved for cleanup of terminal jobs only: it removes the retained job from the public API immediately, and the underlying slot becomes reusable once the worker has fully exited.
 
 ## Score Analysis
 
