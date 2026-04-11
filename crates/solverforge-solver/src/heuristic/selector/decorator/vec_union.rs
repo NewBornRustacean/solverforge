@@ -1,9 +1,9 @@
 /* Vec-backed union move selector for config-driven selector composition.
 
 Unlike `UnionMoveSelector` (which combines exactly two selectors), `VecUnionSelector`
-holds a `Vec<Leaf>` of selectors and chains their moves. This is the backbone of
-config-driven solver construction where the number of selectors is determined at
-runtime from `solver.toml`.
+holds a `Vec<Leaf>` of selectors and lazily traverses them in order. This is the
+backbone of config-driven solver construction where the number of selectors is
+determined at runtime from `solver.toml`.
 */
 
 use std::fmt::Debug;
@@ -17,11 +17,6 @@ use crate::heuristic::r#move::MoveArena;
 use crate::heuristic::selector::move_selector::MoveSelector;
 
 /// Combines moves from an arbitrary number of leaf selectors into a single stream.
-///
-/// Collects all moves from all selectors into a `Vec<M>` and returns an
-/// owning iterator. This is intentional: moves are placed in the arena anyway,
-/// so the intermediate `Vec` costs no additional allocation beyond what the
-/// arena would require.
 pub struct VecUnionSelector<S, M, Leaf> {
     selectors: Vec<Leaf>,
     _phantom: PhantomData<(fn() -> S, fn() -> M)>,
@@ -54,15 +49,9 @@ where
         &'a self,
         score_director: &'a D,
     ) -> impl Iterator<Item = M> + 'a {
-        /* Collect all moves upfront. Moves enter the arena immediately after
-        iteration, so this Vec is ephemeral and avoids lifetime conflicts
-        between multiple borrowed iterators.
-        */
-        let mut moves: Vec<M> = Vec::new();
-        for selector in &self.selectors {
-            moves.extend(selector.iter_moves(score_director));
-        }
-        moves.into_iter()
+        self.selectors
+            .iter()
+            .flat_map(move |selector| selector.iter_moves(score_director))
     }
 
     fn size<D: Director<S>>(&self, score_director: &D) -> usize {

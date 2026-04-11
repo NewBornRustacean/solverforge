@@ -94,19 +94,63 @@ where
         &'a self,
         score_director: &'a D,
     ) -> impl Iterator<Item = ListMoveImpl<S, V>> + 'a {
-        let moves: Vec<ListMoveImpl<S, V>> = match self {
-            Self::NearbyListChange(s) => s.iter_moves(score_director).collect(),
-            Self::NearbyListSwap(s) => s.iter_moves(score_director).collect(),
-            Self::ListReverse(s) => s.iter_moves(score_director).collect(),
-            Self::SubListChange(s) => s.iter_moves(score_director).collect(),
-            Self::KOpt(s) => s.iter_moves(score_director).collect(),
-            Self::NearbyKOpt(s) => s.iter_moves(score_director).collect(),
-            Self::ListRuin(s) => s.iter_moves(score_director).collect(),
-            Self::ListChange(s) => s.iter_moves(score_director).collect(),
-            Self::ListSwap(s) => s.iter_moves(score_director).collect(),
-            Self::SubListSwap(s) => s.iter_moves(score_director).collect(),
-        };
-        moves.into_iter()
+        enum ListLeafIter<A, B, C, DIter, E, F, G, H, I, J> {
+            NearbyListChange(A),
+            NearbyListSwap(B),
+            ListReverse(C),
+            SubListChange(DIter),
+            KOpt(E),
+            NearbyKOpt(F),
+            ListRuin(G),
+            ListChange(H),
+            ListSwap(I),
+            SubListSwap(J),
+        }
+
+        impl<T, A, B, C, DIter, E, F, G, H, I, J> Iterator
+            for ListLeafIter<A, B, C, DIter, E, F, G, H, I, J>
+        where
+            A: Iterator<Item = T>,
+            B: Iterator<Item = T>,
+            C: Iterator<Item = T>,
+            DIter: Iterator<Item = T>,
+            E: Iterator<Item = T>,
+            F: Iterator<Item = T>,
+            G: Iterator<Item = T>,
+            H: Iterator<Item = T>,
+            I: Iterator<Item = T>,
+            J: Iterator<Item = T>,
+        {
+            type Item = T;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                match self {
+                    Self::NearbyListChange(iter) => iter.next(),
+                    Self::NearbyListSwap(iter) => iter.next(),
+                    Self::ListReverse(iter) => iter.next(),
+                    Self::SubListChange(iter) => iter.next(),
+                    Self::KOpt(iter) => iter.next(),
+                    Self::NearbyKOpt(iter) => iter.next(),
+                    Self::ListRuin(iter) => iter.next(),
+                    Self::ListChange(iter) => iter.next(),
+                    Self::ListSwap(iter) => iter.next(),
+                    Self::SubListSwap(iter) => iter.next(),
+                }
+            }
+        }
+
+        match self {
+            Self::NearbyListChange(s) => ListLeafIter::NearbyListChange(s.iter_moves(score_director)),
+            Self::NearbyListSwap(s) => ListLeafIter::NearbyListSwap(s.iter_moves(score_director)),
+            Self::ListReverse(s) => ListLeafIter::ListReverse(s.iter_moves(score_director)),
+            Self::SubListChange(s) => ListLeafIter::SubListChange(s.iter_moves(score_director)),
+            Self::KOpt(s) => ListLeafIter::KOpt(s.iter_moves(score_director)),
+            Self::NearbyKOpt(s) => ListLeafIter::NearbyKOpt(s.iter_moves(score_director)),
+            Self::ListRuin(s) => ListLeafIter::ListRuin(s.iter_moves(score_director)),
+            Self::ListChange(s) => ListLeafIter::ListChange(s.iter_moves(score_director)),
+            Self::ListSwap(s) => ListLeafIter::ListSwap(s.iter_moves(score_director)),
+            Self::SubListSwap(s) => ListLeafIter::SubListSwap(s.iter_moves(score_director)),
+        }
     }
 
     fn size<D: Director<S>>(&self, score_director: &D) -> usize {

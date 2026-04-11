@@ -406,30 +406,29 @@ where
         let count = score_director
             .entity_count(self.binding.descriptor_index)
             .unwrap_or(0);
-        let mut moves = Vec::new();
-        for entity_index in 0..count {
-            let entity = self
-                .solution_descriptor
-                .get_entity(
-                    score_director.working_solution() as &dyn Any,
-                    self.binding.descriptor_index,
-                    entity_index,
-                )
+        let descriptor = self.solution_descriptor.clone();
+        let binding = self.binding.clone();
+        let solution = score_director.working_solution() as &dyn Any;
+        (0..count).flat_map(move |entity_index| {
+            let entity = descriptor
+                .get_entity(solution, binding.descriptor_index, entity_index)
                 .expect("entity lookup failed for change selector");
-            for value in self.binding.values_for_entity(
-                &self.solution_descriptor,
-                score_director.working_solution() as &dyn Any,
-                entity,
-            ) {
-                moves.push(DescriptorEitherMove::Change(DescriptorChangeMove::new(
-                    self.binding.clone(),
-                    entity_index,
-                    Some(value),
-                    self.solution_descriptor.clone(),
-                )));
-            }
-        }
-        moves.into_iter()
+            binding
+                .values_for_entity(&descriptor, solution, entity)
+                .into_iter()
+                .map({
+                    let binding = binding.clone();
+                    let descriptor = descriptor.clone();
+                    move |value| {
+                        DescriptorEitherMove::Change(DescriptorChangeMove::new(
+                            binding.clone(),
+                            entity_index,
+                            Some(value),
+                            descriptor.clone(),
+                        ))
+                    }
+                })
+        })
     }
 
     fn size<D: Director<S>>(&self, score_director: &D) -> usize {
@@ -495,18 +494,22 @@ where
         let count = score_director
             .entity_count(self.binding.descriptor_index)
             .unwrap_or(0);
-        let mut moves = Vec::new();
-        for left_entity_index in 0..count {
-            for right_entity_index in (left_entity_index + 1)..count {
-                moves.push(DescriptorEitherMove::Swap(DescriptorSwapMove::new(
-                    self.binding.clone(),
-                    left_entity_index,
-                    right_entity_index,
-                    self.solution_descriptor.clone(),
-                )));
-            }
-        }
-        moves.into_iter()
+        let binding = self.binding.clone();
+        let descriptor = self.solution_descriptor.clone();
+        (0..count).flat_map(move |left_entity_index| {
+            ((left_entity_index + 1)..count).map({
+                let binding = binding.clone();
+                let descriptor = descriptor.clone();
+                move |right_entity_index| {
+                    DescriptorEitherMove::Swap(DescriptorSwapMove::new(
+                        binding.clone(),
+                        left_entity_index,
+                        right_entity_index,
+                        descriptor.clone(),
+                    ))
+                }
+            })
+        })
     }
 
     fn size<D: Director<S>>(&self, score_director: &D) -> usize {
@@ -543,11 +546,30 @@ where
         &'a self,
         score_director: &'a D,
     ) -> impl Iterator<Item = DescriptorEitherMove<S>> + 'a {
-        let moves: Vec<_> = match self {
-            Self::Change(selector) => selector.iter_moves(score_director).collect(),
-            Self::Swap(selector) => selector.iter_moves(score_director).collect(),
-        };
-        moves.into_iter()
+        enum DescriptorLeafIter<A, B> {
+            Change(A),
+            Swap(B),
+        }
+
+        impl<T, A, B> Iterator for DescriptorLeafIter<A, B>
+        where
+            A: Iterator<Item = T>,
+            B: Iterator<Item = T>,
+        {
+            type Item = T;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                match self {
+                    Self::Change(iter) => iter.next(),
+                    Self::Swap(iter) => iter.next(),
+                }
+            }
+        }
+
+        match self {
+            Self::Change(selector) => DescriptorLeafIter::Change(selector.iter_moves(score_director)),
+            Self::Swap(selector) => DescriptorLeafIter::Swap(selector.iter_moves(score_director)),
+        }
     }
 
     fn size<D: Director<S>>(&self, score_director: &D) -> usize {
