@@ -16,10 +16,13 @@ No solverforge crate dependencies. Generated code references `::solverforge::__i
 
 ```
 src/
-├── lib.rs                — Crate root; attribute macros, derive macro entry points, shared helpers
-├── planning_entity.rs    — PlanningEntityImpl derive: PlanningEntity trait, PlanningId, entity_descriptor()
-├── planning_solution.rs  — PlanningSolutionImpl derive: PlanningSolution trait, descriptor(), VariableOperations, shadow support, Solvable/Analyzable
-├── problem_fact.rs       — ProblemFactImpl derive: ProblemFact, PlanningId, problem_fact_descriptor()
+├── entrypoints.rs          — Shared proc-macro wrapper logic used by the crate root
+├── lib.rs                  — Crate root; required proc-macro entry points only
+├── planning_entity.rs      — PlanningEntityImpl derive module root
+├── planning_entity/*.rs    — Entity derive expansion, list-variable helpers, and tests
+├── planning_solution.rs    — PlanningSolutionImpl derive module root
+├── planning_solution/*.rs  — Solution derive expansion, list/runtime/shadow helpers, and tests
+└── problem_fact.rs         — ProblemFactImpl derive: ProblemFact, PlanningId, problem_fact_descriptor()
 ```
 
 ## Attribute Macros (proc_macro_attribute)
@@ -114,7 +117,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 - `impl PlanningId for T` (if `#[planning_id]` present) — same as entity version
 - `impl T { pub fn problem_fact_descriptor(solution_field: &'static str) -> ProblemFactDescriptor }`
 
-## Shared Helper Functions (lib.rs, private)
+## Shared Helper Functions (`entrypoints.rs` / `attr_parse.rs`, private)
 
 | Function | Signature | Note |
 |----------|-----------|------|
@@ -126,7 +129,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 | `parse_attribute_string` | `fn(&Attribute, &str) -> Option<String>` | Parses `key = "value"` from attribute |
 | `parse_attribute_list` | `fn(&Attribute, &str) -> Vec<String>` | Collects all `key = "value"` pairs for same key |
 
-## Internal Helper Functions (planning_solution.rs, private)
+## Internal Helper Functions (`planning_solution/*.rs`, private)
 
 | Function | Signature | Note |
 |----------|-----------|------|
@@ -144,7 +147,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 | `extract_option_inner_type` | `fn(&Type) -> Result<&Type, Error>` | Extracts `T` from `Option<T>` |
 | `extract_collection_inner_type` | `fn(&Type) -> Option<&Type>` | Extracts `T` from `Vec<T>` |
 
-## Internal Config Structs (planning_solution.rs, private)
+## Internal Config Structs (`planning_solution/config.rs`, private)
 
 ### `ShadowConfig`
 
@@ -174,6 +177,10 @@ All generated code references types via `::solverforge::__internal::*` paths, me
 
 Trait impls like `Solvable`, `Analyzable`, and `ScoreAnalysis` reference `::solverforge::*` directly.
 
+### Proc-macro Crate Root Constraint
+
+`lib.rs` intentionally retains the thin `#[proc_macro_attribute]` and `#[proc_macro_derive]` functions because Rust requires proc-macro exports to live at the crate root. All reusable parsing and code generation logic lives in helper modules.
+
 ### Shadow Variable Update Order
 
 When `#[shadow_variable_updates]` is configured, `update_entity_shadows(entity_idx)` executes in this order:
@@ -189,4 +196,4 @@ When `#[shadow_variable_updates]` is configured, `update_entity_shadows(entity_i
 ## Test Coverage
 
 - `tests/trybuild.rs` — compile-pass and compile-fail coverage for the public macros
-- Unit tests in `planning_entity.rs` and `planning_solution.rs` — token-level golden checks for generated code shape
+- `planning_entity_tests.rs` and `planning_solution_tests.rs` — token-level golden checks for generated code shape
