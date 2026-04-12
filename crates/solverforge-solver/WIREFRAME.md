@@ -25,8 +25,13 @@ src/
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
 ├── list_solver.rs                       — List construction builders, list phase enums, hidden macro metadata + `ListVariableEntity`
 ├── unified_search.rs                    — Unified move envelope, selector builder, local-search/VND builders
-├── runtime.rs                           — Unified runtime phase enum and phase-sequence builder
+├── runtime.rs                           — Re-exports runtime construction and phase builders
+├── runtime/
+│   ├── construction.rs                  — UnifiedConstruction<S, V>, ListConstructionArgs<S, V>, list-target dispatch helpers
+│   └── phases.rs                        — RuntimePhase<C, LS, VND>, UnifiedRuntimePhase<S, V, DM, IDM>, build_phases()
+├── runtime_tests.rs                     — Tests
 ├── run.rs                               — AnyTermination, build_termination, run_solver()
+├── run_tests.rs                         — Tests
 ├── builder/
 │   ├── mod.rs                           — Re-exports from all builder submodules
 │   ├── acceptor.rs                      — AnyAcceptor<S> enum, AcceptorBuilder
@@ -39,6 +44,7 @@ src/
 │       └── leaf.rs                      — ListLeafSelector<S, V, DM, IDM> enum
 ├── stats.rs                             — SolverStats, PhaseStats
 ├── test_utils.rs                        — TestSolution, TestDirector, NQueens helpers
+├── test_utils_tests.rs                  — Tests
 │
 ├── heuristic/
 │   ├── mod.rs                           — Re-exports from move/ and selector/
@@ -217,7 +223,9 @@ src/
 └── realtime/
     ├── mod.rs                           — Re-exports
     ├── problem_change.rs               — ProblemChange trait, BoxedProblemChange, ClosureProblemChange
-    └── solver_handle.rs                — SolverHandle<S>, ProblemChangeReceiver<S>, ProblemChangeResult
+    ├── problem_change_tests.rs         — Tests
+    ├── solver_handle.rs                — SolverHandle<S>, ProblemChangeReceiver<S>, ProblemChangeResult
+    └── solver_handle_tests.rs          — Tests
 ```
 
 ## Core Traits
