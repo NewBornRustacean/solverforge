@@ -30,9 +30,13 @@ src/
 ├── builder/
 │   ├── mod.rs                           — Re-exports from all builder submodules
 │   ├── acceptor.rs                      — AnyAcceptor<S> enum, AcceptorBuilder
+│   ├── acceptor_tests.rs                — Tests
 │   ├── forager.rs                       — AnyForager<S> enum, ForagerBuilder
 │   ├── context.rs                       — ListContext<S, V, DM, IDM>, IntraDistanceAdapter<T>
-│   └── list_selector.rs                — ListLeafSelector<S, V, DM, IDM> enum, ListMoveSelectorBuilder
+│   ├── list_selector.rs                 — Re-exports list selector leaf and builder modules
+│   └── list_selector/
+│       ├── builder_impl.rs              — ListMoveSelectorBuilder
+│       └── leaf.rs                      — ListLeafSelector<S, V, DM, IDM> enum
 ├── stats.rs                             — SolverStats, PhaseStats
 ├── test_utils.rs                        — TestSolution, TestDirector, NQueens helpers
 │
