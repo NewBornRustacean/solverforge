@@ -102,8 +102,10 @@ src/
 │       ├── mod.rs                       — Re-exports
 │       ├── entity.rs                    — EntitySelector trait, FromSolutionEntitySelector, AllEntitiesSelector
 │       ├── value_selector.rs              — ValueSelector trait, StaticValueSelector, FromSolutionValueSelector
-│       ├── move_selector.rs      — MoveSelector trait, ChangeMoveSelector, SwapMoveSelector, EitherChange/SwapMoveSelector, ListMove* wrappers
-│       ├── move_selector_tests.rs — Tests
+│       ├── move_selector.rs             — MoveSelector trait, ChangeMoveSelector, SwapMoveSelector, re-exports
+│       ├── move_selector/either.rs      — EitherChangeMoveSelector, EitherSwapMoveSelector
+│       ├── move_selector/list_adapters.rs — ListMoveListChangeSelector, ListMoveKOptSelector, ListMoveNearbyKOptSelector, ListMoveListRuinSelector
+│       ├── move_selector_tests.rs       — Tests
 │       ├── list_change.rs              — ListChangeMoveSelector<S, V, ES>
 │       ├── list_swap.rs                — ListSwapMoveSelector<S, V, ES>, ListMoveListSwapSelector
 │       ├── list_reverse.rs             — ListReverseMoveSelector<S, V, ES>, ListMoveListReverseSelector
