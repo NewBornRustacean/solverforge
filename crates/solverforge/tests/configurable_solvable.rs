@@ -23,6 +23,21 @@ struct DummyEntity {
     id: usize,
 }
 
+#[problem_fact]
+struct DummyVisit {
+    #[planning_id]
+    id: usize,
+}
+
+#[planning_entity]
+struct DummyRoute {
+    #[planning_id]
+    id: usize,
+
+    #[planning_list_variable(element_collection = "visits")]
+    visits: Vec<usize>,
+}
+
 #[planning_solution(
     constraints = "define_constraints",
     config = "solver_config_for_solution"
@@ -52,6 +67,24 @@ struct ExplicitConfigurableSolution {
     time_limit_secs: u64,
 }
 
+#[planning_solution(
+    constraints = "define_explicit_list_constraints",
+    config = "solver_config_for_explicit_list_solution",
+    solver_toml = "fixtures/configurable_solvable_solver.toml"
+)]
+struct ExplicitListConfigurableSolution {
+    #[problem_fact_collection]
+    visits: Vec<DummyVisit>,
+
+    #[planning_entity_collection]
+    routes: Vec<DummyRoute>,
+
+    #[planning_score]
+    score: Option<HardSoftScore>,
+
+    time_limit_secs: u64,
+}
+
 fn define_constraints() -> impl ConstraintSet<ConfigurableSolution, HardSoftScore> {
     (
         ConstraintFactory::<ConfigurableSolution, HardSoftScore>::new()
@@ -69,6 +102,11 @@ fn define_explicit_constraints() -> impl ConstraintSet<ExplicitConfigurableSolut
             .penalize_with(|_| HardSoftScore::of(0, 0))
             .named("noop"),
     )
+}
+
+fn define_explicit_list_constraints(
+) -> impl ConstraintSet<ExplicitListConfigurableSolution, HardSoftScore> {
+    ()
 }
 
 fn solver_config_for_solution(
@@ -114,6 +152,13 @@ fn solver_config_for_explicit_solution(
     );
 
     config
+}
+
+fn solver_config_for_explicit_list_solution(
+    solution: &ExplicitListConfigurableSolution,
+    config: SolverConfig,
+) -> SolverConfig {
+    config.with_termination_seconds(solution.time_limit_secs)
 }
 
 fn cwd_test_lock() -> &'static Mutex<()> {
@@ -254,6 +299,45 @@ fn planning_solution_solver_toml_path_is_independent_of_cwd() {
         LAST_EXPLICIT_FINAL_TERMINATION_SECONDS.load(Ordering::SeqCst),
         11
     );
+
+    MANAGER.delete(job_id).expect("delete completed job");
+}
+
+#[test]
+fn planning_solution_solver_toml_path_compiles_and_runs_for_list_only_solutions() {
+    static MANAGER: SolverManager<ExplicitListConfigurableSolution> = SolverManager::new();
+
+    let _cwd_lock = cwd_test_lock().lock().expect("cwd lock should be acquired");
+    let _temp_solver_dir = TempSolverConfigDir::new(None);
+
+    let (job_id, mut receiver) = MANAGER
+        .solve(ExplicitListConfigurableSolution {
+            visits: Vec::new(),
+            routes: Vec::new(),
+            score: None,
+            time_limit_secs: 3,
+        })
+        .expect("job should start");
+
+    let mut completed = false;
+
+    while let Some(event) = receiver.blocking_recv() {
+        match event {
+            SolverEvent::BestSolution { .. } => {}
+            SolverEvent::Completed { metadata, solution } => {
+                assert_eq!(
+                    metadata.terminal_reason,
+                    Some(SolverTerminalReason::Completed)
+                );
+                assert_eq!(solution.score, Some(HardSoftScore::of(0, 0)));
+                completed = true;
+                break;
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    assert!(completed, "expected a completed event");
 
     MANAGER.delete(job_id).expect("delete completed job");
 }

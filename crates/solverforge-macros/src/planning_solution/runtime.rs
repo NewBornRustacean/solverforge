@@ -273,6 +273,7 @@ pub(super) fn generate_runtime_phase_support(
 
                 fn __solverforge_log_scale(solution: &Self) {
                     let descriptor = Self::descriptor();
+                    let has_standard = ::solverforge::__internal::descriptor_has_bindings(&descriptor);
                     ::solverforge::__internal::log_solve_start(
                         Self::n_entities(solution),
                         ::core::option::Option::Some(Self::element_count(solution)),
