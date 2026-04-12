@@ -105,7 +105,11 @@ src/
 │       ├── pillar_tests.rs             — Tests
 │       ├── ruin.rs                      — RuinMoveSelector<S, V>
 │       ├── mimic.rs                     — MimicRecorder, MimicRecordingEntitySelector, MimicReplayingEntitySelector
+│       ├── mimic_tests.rs               — Tests
 │       ├── selection_order.rs          — SelectionOrder enum
+│       ├── selection_order_tests.rs    — Tests
+│       ├── entity_tests.rs              — Tests
+│       ├── value_selector_tests.rs     — Tests
 │       ├── nearby.rs                    — NearbyDistanceMeter trait, DynDistanceMeter, NearbyEntitySelector, NearbySelectionConfig
 │       ├── nearby_list_change.rs       — CrossEntityDistanceMeter trait, NearbyListChangeMoveSelector, ListMoveNearbyListChangeSelector
 │       ├── nearby_list_swap.rs         — NearbyListSwapMoveSelector, ListMoveNearbyListSwapSelector
