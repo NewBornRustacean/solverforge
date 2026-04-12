@@ -1,7 +1,7 @@
 use super::*;
 use std::any::TypeId;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use solverforge_config::{MoveSelectorConfig, NearbyListSwapMoveConfig, VariableTargetConfig};
 use solverforge_core::domain::{
