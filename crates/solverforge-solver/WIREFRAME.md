@@ -169,8 +169,16 @@ src/
 │   ├── exhaustive/
 │   │   ├── mod.rs                       — ExhaustiveSearchPhase, ExhaustiveSearchConfig, ExplorationType
 │   │   ├── bounder.rs                   — ScoreBounder trait, SoftScoreBounder, FixedOffsetBounder
+│   │   ├── bounder_tests.rs             — Tests
+│   │   ├── config.rs                    — ExhaustiveSearchConfig
 │   │   ├── decider.rs                   — ExhaustiveSearchDecider trait, SimpleDecider
-│   │   └── node.rs                      — ExhaustiveSearchNode, MoveSequence
+│   │   ├── decider_tests.rs             — Tests
+│   │   ├── exploration_type.rs          — ExplorationType
+│   │   ├── node.rs                      — ExhaustiveSearchNode, MoveSequence
+│   │   ├── node_tests.rs                — Tests
+│   │   ├── phase.rs                     — ExhaustiveSearchPhase<Dec>
+│   │   ├── phase_tests.rs               — Tests
+│   │   └── priority_node.rs             — PriorityNode<S>
 │   ├── partitioned/
 │   │   ├── mod.rs                       — PartitionedSearchPhase, PartitionedSearchConfig, ChildPhases trait
 │   │   └── partitioner.rs              — SolutionPartitioner trait, FunctionalPartitioner, ThreadCount
