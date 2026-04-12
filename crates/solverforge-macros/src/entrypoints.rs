@@ -1,0 +1,104 @@
+use proc_macro::TokenStream;
+use quote::quote;
+use syn::{parse_macro_input, DeriveInput, ItemStruct};
+
+use crate::attr_parse::{has_serde_flag, parse_solution_flags};
+
+pub(crate) fn planning_entity_attr(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let has_serde = has_serde_flag(attr);
+    let input = parse_macro_input!(item as ItemStruct);
+    let name = &input.ident;
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let attrs: Vec<_> = input.attrs.iter().collect();
+    let fields = &input.fields;
+
+    let serde_derives = if has_serde {
+        quote! { ::serde::Serialize, ::serde::Deserialize, }
+    } else {
+        quote! {}
+    };
+
+    let expanded = quote! {
+        #[derive(Clone, Debug, PartialEq, Eq, Hash, #serde_derives ::solverforge::PlanningEntityImpl)]
+        #(#attrs)*
+        #vis struct #name #generics #fields
+    };
+    expanded.into()
+}
+
+pub(crate) fn planning_solution_attr(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let (has_serde, constraints_path, config_path, solver_toml_path) = parse_solution_flags(attr);
+    let input = parse_macro_input!(item as ItemStruct);
+    let name = &input.ident;
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let attrs: Vec<_> = input.attrs.iter().collect();
+    let fields = &input.fields;
+
+    let serde_derives = if has_serde {
+        quote! { ::serde::Serialize, ::serde::Deserialize, }
+    } else {
+        quote! {}
+    };
+
+    let constraints_attr =
+        constraints_path.map(|p| quote! { #[solverforge_constraints_path = #p] });
+    let config_attr = config_path.map(|p| quote! { #[solverforge_config_path = #p] });
+    let solver_toml_attr =
+        solver_toml_path.map(|p| quote! { #[solverforge_solver_toml_path = #p] });
+
+    let expanded = quote! {
+        #[derive(Clone, Debug, #serde_derives ::solverforge::PlanningSolutionImpl)]
+        #constraints_attr
+        #config_attr
+        #solver_toml_attr
+        #(#attrs)*
+        #vis struct #name #generics #fields
+    };
+    expanded.into()
+}
+
+pub(crate) fn problem_fact_attr(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let has_serde = has_serde_flag(attr);
+    let input = parse_macro_input!(item as ItemStruct);
+    let name = &input.ident;
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let attrs: Vec<_> = input.attrs.iter().collect();
+    let fields = &input.fields;
+
+    let serde_derives = if has_serde {
+        quote! { ::serde::Serialize, ::serde::Deserialize, }
+    } else {
+        quote! {}
+    };
+
+    let expanded = quote! {
+        #[derive(Clone, Debug, PartialEq, Eq, #serde_derives ::solverforge::ProblemFactImpl)]
+        #(#attrs)*
+        #vis struct #name #generics #fields
+    };
+    expanded.into()
+}
+
+pub(crate) fn derive_planning_entity(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    crate::planning_entity::expand_derive(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+pub(crate) fn derive_planning_solution(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    crate::planning_solution::expand_derive(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+pub(crate) fn derive_problem_fact(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    crate::problem_fact::expand_derive(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
