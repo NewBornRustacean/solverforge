@@ -43,7 +43,11 @@ src/
 │   ├── nary_incremental/
 │   │   ├── mod.rs                                  — Re-exports all nary constraint macros
 │   │   ├── bi.rs                                   — impl_incremental_bi_constraint! macro → IncrementalBiConstraint
-│   │   └── nary_unified.rs                         — impl_incremental_tri/quad/penta_constraint! macros → IncrementalTriConstraint, IncrementalQuadConstraint, IncrementalPentaConstraint
+│   │   ├── nary_unified.rs                         — Re-exports tri/quad/penta incremental constraint macros
+│   │   └── nary_unified/
+│   │       ├── tri.rs                              — impl_incremental_tri_constraint! macro → IncrementalTriConstraint
+│   │       ├── quad.rs                             — impl_incremental_quad_constraint! macro → IncrementalQuadConstraint
+│   │       └── penta.rs                            — impl_incremental_penta_constraint! macro → IncrementalPentaConstraint
 │   └── tests/
 │       ├── mod.rs                                  — Test module declarations
 │       ├── bi_incr.rs                              — IncrementalBiConstraint tests
