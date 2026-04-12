@@ -26,6 +26,13 @@ src/
 ├── list_solver.rs                       — List construction builders, list phase enums, hidden macro metadata + `ListVariableEntity`
 ├── list_solver_tests.rs                 — Tests
 ├── unified_search.rs                    — Unified move envelope, selector builder, local-search/VND builders
+├── descriptor_standard.rs               — Re-exports descriptor bindings, move types, selectors, and construction helpers
+├── descriptor_standard/
+│   ├── bindings.rs                      — Standard-variable binding discovery, matching, and work checks
+│   ├── move_types.rs                    — DescriptorChangeMove<S>, DescriptorSwapMove<S>, DescriptorEitherMove<S>
+│   ├── selectors.rs                     — DescriptorChangeMoveSelector<S>, DescriptorSwapMoveSelector<S>, DescriptorLeafSelector<S>, build_descriptor_move_selector()
+│   ├── construction.rs                  — DescriptorConstruction<S>, DescriptorEntityPlacer<S>, build_descriptor_construction()
+│   └── tests.rs                         — Tests
 ├── runtime.rs                           — Re-exports runtime construction and phase builders
 ├── runtime/
 │   ├── construction.rs                  — UnifiedConstruction<S, V>, ListConstructionArgs<S, V>, list-target dispatch helpers
