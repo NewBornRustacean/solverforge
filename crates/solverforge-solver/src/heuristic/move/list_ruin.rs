@@ -154,6 +154,27 @@ impl<S, V> ListRuinMove<S, V> {
     }
 }
 
+pub(crate) fn final_positions_after_insertions(
+    placements: &SmallVec<[(usize, usize); 8]>,
+) -> SmallVec<[usize; 8]> {
+    let mut current_positions: SmallVec<[usize; 8]> = SmallVec::with_capacity(placements.len());
+
+    for i in 0..placements.len() {
+        let (entity_i, insert_pos_i) = placements[i];
+
+        for j in 0..i {
+            let (entity_j, _) = placements[j];
+            if entity_j == entity_i && current_positions[j] >= insert_pos_i {
+                current_positions[j] += 1;
+            }
+        }
+
+        current_positions.push(insert_pos_i);
+    }
+
+    current_positions
+}
+
 impl<S, V> Move<S> for ListRuinMove<S, V>
 where
     S: PlanningSolution,
@@ -254,38 +275,25 @@ where
 
         score_director.register_undo(Box::new(move |s: &mut S| {
             let n = placements.len();
-
-            // Compute current_pos[i] = position of element i after all n insertions.
-            // current_pos[i] = placements[i].pos + #{j>i : same entity, placements[j].pos <= current_pos[i-so-far]}
-            let mut current_pos: SmallVec<[usize; 8]> = SmallVec::with_capacity(n);
-            for i in 0..n {
-                let (e_i, p_i) = placements[i];
-                let shifted = placements[i + 1..]
-                    .iter()
-                    .filter(|&&(ej, pj)| ej == e_i && pj <= p_i)
-                    .count();
-                /* Note: this is an approximation when multiple later insertions interact.
-                The exact value requires iterative computation, but for the common case
-                (small ruin counts, distinct positions) this is exact.
-                */
-                current_pos.push(p_i + shifted);
-            }
+            let mut current_pos = final_positions_after_insertions(&placements);
 
             /* Remove in reverse insertion order (i = n-1 downto 0).
             When removing element i, elements j > i have already been removed.
-            Each removed j that was at current_pos[j] < current_pos[i] in the same
-            entity shifted element i left by 1.
+            Any earlier element in the same entity that currently sits after the
+            removed position shifts left by one.
             */
             let mut vals: SmallVec<[V; 8]> = SmallVec::with_capacity(n);
             for i in (0..n).rev() {
                 let (e_i, _) = placements[i];
-                let left_shifts = placements[i + 1..]
-                    .iter()
-                    .zip(current_pos[i + 1..].iter())
-                    .filter(|&(&(ej, _), &cpj)| ej == e_i && cpj < current_pos[i])
-                    .count();
-                let actual_pos = current_pos[i] - left_shifts;
+                let actual_pos = current_pos[i];
                 vals.push(list_remove(s, e_i, actual_pos));
+
+                for j in 0..i {
+                    let (e_j, _) = placements[j];
+                    if e_j == e_i && current_pos[j] > actual_pos {
+                        current_pos[j] -= 1;
+                    }
+                }
             }
             // vals is in reverse original order; reverse to get forward original order.
             vals.reverse();

@@ -88,7 +88,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-solverforge = { version = "0.8.5", features = ["console"] }
+solverforge = { version = "0.8.6", features = ["console"] }
 ```
 
 ### Feature Flags
@@ -472,7 +472,11 @@ Typical throughput: 300k-1M moves/second depending on constraint complexity for 
 
 ## Status
 
-**Current Version**: 0.8.1
+**Current Version**: 0.8.6
+
+### What's New in 0.8.6
+
+- Fixed `ListRuinMove` undo bookkeeping for repeated same-entity reinsertion patterns so ruin-and-recreate neighborhoods restore list state exactly under interacting insertion positions.
 
 ### What's New in 0.8.1
 
