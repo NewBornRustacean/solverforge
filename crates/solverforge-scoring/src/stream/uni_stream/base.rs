@@ -3,15 +3,16 @@ use std::marker::PhantomData;
 
 use solverforge_core::score::Score;
 
-use crate::constraint::if_exists::ExistenceMode;
-
 use super::super::balance_stream::BalanceConstraintStream;
-use super::super::collection_extract::CollectionExtract;
+use super::super::collection_extract::{
+    CollectionExtract, FlattenVecExtract, TrackedCollectionExtract,
+};
 use super::super::collector::UniCollector;
+use super::super::existence_stream::ExistenceMode;
+use super::super::existence_target::ExistenceTarget;
+use super::super::existence_target::FlattenedCollectionTarget;
 use super::super::filter::{AndUniFilter, FnUniFilter, TrueFilter, UniFilter};
 use super::super::grouped_stream::GroupedConstraintStream;
-use super::super::if_exists_stream::IfExistsStream;
-use super::super::joiner::EqualJoiner;
 
 /* Zero-erasure constraint stream over a single entity type.
 
@@ -63,6 +64,22 @@ where
     F: UniFilter<S, A>,
     Sc: Score + 'static,
 {
+    pub fn flattened<B, Flat>(
+        self,
+        flatten: Flat,
+    ) -> FlattenedCollectionTarget<S, A, B, E, F, FlattenVecExtract<Flat>, Sc>
+    where
+        E: TrackedCollectionExtract<S, Item = A>,
+        B: Clone + Send + Sync + 'static,
+        Flat: for<'a> Fn(&'a A) -> &'a Vec<B> + Send + Sync,
+    {
+        FlattenedCollectionTarget {
+            right_stream: self,
+            flatten: FlattenVecExtract(flatten),
+            _phantom: PhantomData,
+        }
+    }
+
     /* Adds a filter predicate to the stream. */
     pub fn filter<P>(
         self,
@@ -119,53 +136,28 @@ where
     {
         BalanceConstraintStream::new(self.extractor, self.filter, key_fn)
     }
+}
 
-    /* Filters A entities based on whether a matching B entity exists. */
-    pub fn if_exists_filtered<B, EB, K, KA, KB>(
-        self,
-        extractor_b: EB,
-        joiner: EqualJoiner<KA, KB, K>,
-    ) -> IfExistsStream<S, A, B, K, E, EB, KA, KB, F, Sc>
+impl<S, A, E, F, Sc> UniConstraintStream<S, A, E, F, Sc>
+where
+    S: Send + Sync + 'static,
+    A: Clone + Send + Sync + 'static,
+    E: TrackedCollectionExtract<S, Item = A>,
+    F: UniFilter<S, A>,
+    Sc: Score + 'static,
+{
+    pub fn if_exists<T>(self, target: T) -> T::Output
     where
-        B: Clone + Send + Sync + 'static,
-        EB: Fn(&S) -> Vec<B> + Send + Sync,
-        K: Eq + Hash + Clone + Send + Sync,
-        KA: Fn(&A) -> K + Send + Sync,
-        KB: Fn(&B) -> K + Send + Sync,
+        T: ExistenceTarget<S, A, E, F, Sc>,
     {
-        let (key_a, key_b) = joiner.into_keys();
-        IfExistsStream::new(
-            ExistenceMode::Exists,
-            self.extractor,
-            extractor_b,
-            key_a,
-            key_b,
-            self.filter,
-        )
+        target.apply(ExistenceMode::Exists, self.extractor, self.filter)
     }
 
-    /* Filters A entities based on whether NO matching B entity exists. */
-    pub fn if_not_exists_filtered<B, EB, K, KA, KB>(
-        self,
-        extractor_b: EB,
-        joiner: EqualJoiner<KA, KB, K>,
-    ) -> IfExistsStream<S, A, B, K, E, EB, KA, KB, F, Sc>
+    pub fn if_not_exists<T>(self, target: T) -> T::Output
     where
-        B: Clone + Send + Sync + 'static,
-        EB: Fn(&S) -> Vec<B> + Send + Sync,
-        K: Eq + Hash + Clone + Send + Sync,
-        KA: Fn(&A) -> K + Send + Sync,
-        KB: Fn(&B) -> K + Send + Sync,
+        T: ExistenceTarget<S, A, E, F, Sc>,
     {
-        let (key_a, key_b) = joiner.into_keys();
-        IfExistsStream::new(
-            ExistenceMode::NotExists,
-            self.extractor,
-            extractor_b,
-            key_a,
-            key_b,
-            self.filter,
-        )
+        target.apply(ExistenceMode::NotExists, self.extractor, self.filter)
     }
 }
 

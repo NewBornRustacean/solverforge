@@ -302,7 +302,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             where
                 Sc: ::solverforge::Score + 'static,
                 Solution: ::solverforge::__internal::PlanningSolution,
-                E: Fn(&Solution) -> &[#name] + Send + Sync,
+                E: ::solverforge::__internal::CollectionExtract<Solution, Item = #name>,
                 F: ::solverforge::__internal::UniFilter<Solution, #name>,
             {
                 type Output = ::solverforge::__internal::UniConstraintStream<
