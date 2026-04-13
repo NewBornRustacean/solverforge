@@ -1,6 +1,8 @@
 // Tests for ListRuinMove operations.
 
 use super::*;
+use crate::heuristic::r#move::list_ruin::final_positions_after_insertions;
+use smallvec::SmallVec;
 
 #[derive(Clone, Debug)]
 struct Route {
@@ -211,4 +213,35 @@ fn out_of_bounds_not_doable() {
     );
 
     assert!(!m.is_doable(&director));
+}
+
+#[test]
+fn computes_exact_final_positions_for_same_entity_reinsertion() {
+    let placements = SmallVec::<[(usize, usize); 8]>::from_slice(&[(0, 0), (0, 0), (0, 0), (0, 1)]);
+
+    let current = final_positions_after_insertions(&placements);
+
+    assert_eq!(current.as_slice(), &[3, 2, 0, 1]);
+}
+
+#[test]
+fn undo_positions_do_not_underflow_for_interacting_same_entity_insertions() {
+    let placements = SmallVec::<[(usize, usize); 8]>::from_slice(&[(0, 0), (0, 0), (0, 0), (0, 1)]);
+    let mut current = final_positions_after_insertions(&placements);
+    let mut removal_order = Vec::new();
+
+    for i in (0..placements.len()).rev() {
+        let (entity_i, _) = placements[i];
+        let actual_pos = current[i];
+        removal_order.push(actual_pos);
+
+        for j in 0..i {
+            let (entity_j, _) = placements[j];
+            if entity_j == entity_i && current[j] > actual_pos {
+                current[j] -= 1;
+            }
+        }
+    }
+
+    assert_eq!(removal_order, vec![1, 0, 0, 0]);
 }
