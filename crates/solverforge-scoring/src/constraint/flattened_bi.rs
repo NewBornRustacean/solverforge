@@ -11,7 +11,6 @@ use solverforge_core::score::Score;
 use solverforge_core::{ConstraintRef, ImpactType};
 
 use crate::api::constraint_set::IncrementalConstraint;
-
 /* O(1) flattened bi-constraint.
 
 Given a join between A and B entities by key, this constraint:
@@ -31,7 +30,7 @@ Given a join between A and B entities by key, this constraint:
 - `EB` - Extractor for B entities
 - `KA` - Key extractor for A (join key)
 - `KB` - Key extractor for B (join key)
-- `Flatten` - Function extracting &[C] from &B
+- `Flatten` - Function extracting `&[C]` from `&B`
 - `CKeyFn` - Function extracting index key from &C
 - `ALookup` - Function extracting lookup key from &A
 - `F` - Filter on (A, C) pairs

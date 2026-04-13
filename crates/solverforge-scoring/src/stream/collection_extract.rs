@@ -34,15 +34,98 @@ pub trait CollectionExtract<S>: Send + Sync {
     fn extract<'s>(&self, s: &'s S) -> &'s [Self::Item];
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeSource {
+    Static,
+    Descriptor(usize),
+}
+
+pub trait TrackedCollectionExtract<S>: CollectionExtract<S> {
+    fn change_source(&self) -> ChangeSource;
+}
+
+pub trait FlattenExtract<P>: Send + Sync {
+    type Item;
+
+    fn extract<'s>(&self, parent: &'s P) -> &'s [Self::Item];
+}
+
 impl<S, A, F> CollectionExtract<S> for F
 where
-    F: Fn(&S) -> &[A] + Send + Sync,
+    F: for<'a> Fn(&'a S) -> &'a [A] + Send + Sync,
 {
     type Item = A;
 
     #[inline]
     fn extract<'s>(&self, s: &'s S) -> &'s [A] {
         self(s)
+    }
+}
+
+impl<P, B, F> FlattenExtract<P> for F
+where
+    F: for<'a> Fn(&'a P) -> &'a [B] + Send + Sync,
+{
+    type Item = B;
+
+    #[inline]
+    fn extract<'s>(&self, parent: &'s P) -> &'s [B] {
+        self(parent)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct FlattenVecExtract<F>(pub F);
+
+impl<P, B, F> FlattenExtract<P> for FlattenVecExtract<F>
+where
+    F: for<'a> Fn(&'a P) -> &'a Vec<B> + Send + Sync,
+{
+    type Item = B;
+
+    #[inline]
+    fn extract<'s>(&self, parent: &'s P) -> &'s [B] {
+        (self.0)(parent).as_slice()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct TrackedExtract<E> {
+    extractor: E,
+    change_source: ChangeSource,
+}
+
+impl<E> TrackedExtract<E> {
+    pub fn new(extractor: E, change_source: ChangeSource) -> Self {
+        Self {
+            extractor,
+            change_source,
+        }
+    }
+
+    pub fn extractor(&self) -> &E {
+        &self.extractor
+    }
+}
+
+impl<S, E> CollectionExtract<S> for TrackedExtract<E>
+where
+    E: CollectionExtract<S>,
+{
+    type Item = E::Item;
+
+    #[inline]
+    fn extract<'s>(&self, s: &'s S) -> &'s [Self::Item] {
+        self.extractor.extract(s)
+    }
+}
+
+impl<S, E> TrackedCollectionExtract<S> for TrackedExtract<E>
+where
+    E: CollectionExtract<S>,
+{
+    fn change_source(&self) -> ChangeSource {
+        self.change_source
     }
 }
 
@@ -54,7 +137,7 @@ pub struct VecExtract<F>(pub F);
 
 impl<S, A, F> CollectionExtract<S> for VecExtract<F>
 where
-    F: Fn(&S) -> &Vec<A> + Send + Sync,
+    F: for<'a> Fn(&'a S) -> &'a Vec<A> + Send + Sync,
 {
     type Item = A;
 
@@ -84,7 +167,11 @@ assert_eq!(extractor.extract(&schedule), &["Alice".to_string()]);
 */
 pub fn vec<S, A, F>(f: F) -> VecExtract<F>
 where
-    F: Fn(&S) -> &Vec<A> + Send + Sync,
+    F: for<'a> Fn(&'a S) -> &'a Vec<A> + Send + Sync,
 {
     VecExtract(f)
+}
+
+pub fn tracked<E>(extractor: E, change_source: ChangeSource) -> TrackedExtract<E> {
+    TrackedExtract::new(extractor, change_source)
 }

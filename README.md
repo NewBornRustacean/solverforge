@@ -499,7 +499,7 @@ Typical throughput: 300k-1M moves/second depending on constraint complexity for 
 - **`.named("name")`**: sole finalization method on all builders (replaces `as_constraint`)
 - **Score trait**: `one_hard()`, `one_soft()`, `one_medium()` default methods
 - **Joiners**: `equal`, `equal_bi`, `less_than`, `less_than_or_equal`, `greater_than`, `greater_than_or_equal`, `overlapping`, `filtering`, with `.and()` composition
-- **Conditional existence**: `if_exists_filtered()`, `if_not_exists_filtered()` with joiner-based matching
+- **Conditional existence**: `if_exists(...)`, `if_not_exists(...)` over tracked collection targets, including flattened collection existence for nested list membership
 
 ### What's New in 0.5.15
 

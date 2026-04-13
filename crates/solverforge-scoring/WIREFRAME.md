@@ -40,7 +40,7 @@ src/
 │   ├── complemented.rs                             — ComplementedGroupConstraint<S,A,B,K,EA,EB,KA,KB,C,D,W,Sc>
 │   ├── cross_bi_incremental.rs                     — IncrementalCrossBiConstraint<S,A,B,K,EA,EB,KA,KB,F,W,Sc>
 │   ├── flattened_bi.rs                             — FlattenedBiConstraint<S,A,B,C,K,CK,EA,EB,KA,KB,Flatten,CKeyFn,ALookup,F,W,Sc>
-│   ├── if_exists.rs                                — IfExistsUniConstraint<S,A,B,K,EA,EB,KA,KB,FA,W,Sc>, ExistenceMode enum
+│   ├── exists.rs                                   — IncrementalExistsConstraint<S,A,P,B,K,EA,EP,KA,KB,FA,FP,Flatten,W,Sc>, SelfFlatten
 │   ├── nary_incremental/
 │   │   ├── mod.rs                                  — Re-exports all nary constraint macros
 │   │   ├── bi.rs                                   — impl_incremental_bi_constraint! macro → IncrementalBiConstraint
@@ -59,7 +59,7 @@ src/
 │       ├── balance.rs                              — BalanceConstraint tests
 │       ├── complemented.rs                         — ComplementedGroupConstraint tests
 │       ├── flattened_bi.rs                         — FlattenedBiConstraint tests
-│       └── if_exists.rs                            — IfExistsUniConstraint tests
+│       └── exists.rs                               — IncrementalExistsConstraint tests
 ├── director/
 │   ├── mod.rs                                      — Re-exports all director types and traits
 │   ├── traits.rs                                   — Director<S> trait
@@ -98,8 +98,9 @@ src/
 │   ├── flattened_bi_stream/base.rs                 — FlattenedBiConstraintStream
 │   ├── flattened_bi_stream/builder.rs              — FlattenedBiConstraintBuilder
 │   ├── flattened_bi_stream/weighting.rs            — Weighting helpers for flattened streams
-│   ├── if_exists_stream.rs                         — IfExistsStream, IfExistsBuilder
-│   ├── collection_extract.rs                       — CollectionExtract trait, VecExtract wrapper, vec() constructor
+│   ├── existence_stream.rs                         — ExistsConstraintStream, ExistsConstraintBuilder, ExistenceMode, FlattenExtract
+│   ├── existence_target.rs                         — ExistenceTarget trait for direct and flattened existence targets
+│   ├── collection_extract.rs                       — CollectionExtract trait, tracked extractors, VecExtract wrapper, vec() constructor
 │   ├── join_target.rs                              — JoinTarget trait + 3 impls (self-join, keyed cross-join, predicate cross-join)
 │   ├── key_extract.rs                              — KeyExtract trait, EntityKeyAdapter struct
 │   ├── arity_stream_macros/
@@ -321,7 +322,7 @@ All implement `IncrementalConstraint<S, Sc>`.
 
 **`FlattenedBiConstraint<S, A, B, C, K, CK, EA, EB, KA, KB, Flatten, CKeyFn, ALookup, F, W, Sc>`** — Cross-collection with nested collection flattening.
 
-**`IfExistsUniConstraint<S, A, B, K, EA, EB, KA, KB, FA, W, Sc>`** — Existence/non-existence check.
+**`IncrementalExistsConstraint<S, A, P, B, K, EA, EP, KA, KB, FA, FP, Flatten, W, Sc>`** — Existence/non-existence check over a tracked direct or flattened collection source.
 
 **`ExistenceMode`** — `enum { Exists, NotExists }`
 
@@ -357,9 +358,10 @@ All implement `IncrementalConstraint<S, Sc>`.
 
 **`ConstraintFactory<S, Sc: Score>`** — Entry point.
 - `new()`, `for_each()` → `UniConstraintStream`
+- `for_each_tracked()` → `UniConstraintStream` with descriptor-aware change source metadata
 
 **`UniConstraintStream<S, A, E, F, Sc>`** — Single collection stream.
-- Operations: `filter()`, `join(target)` (unified dispatch via `JoinTarget`), `group_by()`, `balance()`, `if_exists_filtered()`, `if_not_exists_filtered()`, `penalize()`, `penalize_with()`, `penalize_hard_with()`, `penalize_hard()`, `penalize_soft()`, `reward()`, `reward_with()`, `reward_hard_with()`, `reward_hard()`, `reward_soft()`
+- Operations: `filter()`, `join(target)` (unified dispatch via `JoinTarget`), `group_by()`, `balance()`, `if_exists(target)`, `if_not_exists(target)`, `penalize()`, `penalize_with()`, `penalize_hard_with()`, `penalize_hard()`, `penalize_soft()`, `reward()`, `reward_with()`, `reward_hard_with()`, `reward_hard()`, `reward_soft()`
 - `join()` dispatch: `equal(|a| key)` → self-join `BiConstraintStream`; `(extractor_b, equal_bi(ka, kb))` → keyed `CrossBiConstraintStream`; `(other_stream, |a, b| pred)` → predicate `CrossBiConstraintStream`
 - `into_parts()` → `(E, F)`, `from_parts(extractor, filter)` → `Self`, `extractor()` → `&E`
 
@@ -392,7 +394,7 @@ All implement `IncrementalConstraint<S, Sc>`.
 
 **`FlattenedBiConstraintStream/Builder`** — Flattened bi stream. `filter()`, `penalize()`, `penalize_with()`, `penalize_hard()`, `penalize_soft()`, `reward()`, `reward_hard()`, `reward_soft()`, `named()` → `FlattenedBiConstraint`
 
-**`IfExistsStream/IfExistsBuilder`** — If-exists stream. `penalize()`, `penalize_hard()`, `penalize_soft()`, `reward()`, `reward_hard()`, `reward_soft()`, `named()` → `IfExistsUniConstraint`
+**`ExistsConstraintStream/ExistsConstraintBuilder`** — Existence stream over tracked direct or flattened collection targets. `penalize()`, `penalize_hard()`, `penalize_soft()`, `reward()`, `reward_hard()`, `reward_soft()`, `named()` → `IncrementalExistsConstraint`
 
 ### Extractor Types
 
@@ -410,6 +412,12 @@ factory.for_each(vec(|s: &Schedule| &s.employees))
 // or in a join:
 .join((vec(|s: &Schedule| &s.employees), equal_bi(...)))
 ```
+
+**`TrackedCollectionExtract<S>` / `TrackedExtract<E>` / `tracked(...)`** — Descriptor-aware collection extraction used by structured existence filtering. Planning entity collections carry `ChangeSource::Descriptor(idx)`; static fact collections carry `ChangeSource::Static`.
+
+**`ExistenceTarget<S, A, E, F, Sc>`** — Trait for unified `.if_exists(...)` / `.if_not_exists(...)` dispatch on `UniConstraintStream`.
+- Direct target: `(other_stream, equal_bi(left_key, right_key))`
+- Flattened target: `(parent_stream, flatten, equal_bi(left_key, flattened_key))`
 
 ### Join Support Types
 

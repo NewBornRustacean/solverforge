@@ -69,11 +69,12 @@ pub mod collection_extract;
 pub mod collector;
 mod complemented_stream;
 mod cross_bi_stream;
+mod existence_stream;
+mod existence_target;
 mod factory;
 pub mod filter;
 mod flattened_bi_stream;
 mod grouped_stream;
-mod if_exists_stream;
 pub mod join_target;
 pub mod joiner;
 pub mod key_extract;
@@ -84,13 +85,17 @@ mod uni_stream;
 
 pub use balance_stream::{BalanceConstraintBuilder, BalanceConstraintStream};
 pub use bi_stream::{BiConstraintBuilder, BiConstraintStream};
-pub use collection_extract::{CollectionExtract, VecExtract};
+pub use collection_extract::{
+    tracked, ChangeSource, CollectionExtract, FlattenExtract, TrackedCollectionExtract,
+    TrackedExtract, VecExtract,
+};
 pub use complemented_stream::{ComplementedConstraintBuilder, ComplementedConstraintStream};
 pub use cross_bi_stream::{CrossBiConstraintBuilder, CrossBiConstraintStream};
+pub use existence_stream::{ExistenceMode, ExistsConstraintBuilder, ExistsConstraintStream};
+pub use existence_target::{ExistenceTarget, FlattenedCollectionTarget};
 pub use factory::ConstraintFactory;
 pub use flattened_bi_stream::{FlattenedBiConstraintBuilder, FlattenedBiConstraintStream};
 pub use grouped_stream::{GroupedConstraintBuilder, GroupedConstraintStream};
-pub use if_exists_stream::{IfExistsBuilder, IfExistsStream};
 pub use join_target::JoinTarget;
 pub use key_extract::{EntityKeyAdapter, KeyExtract};
 pub use penta_stream::{PentaConstraintBuilder, PentaConstraintStream};
