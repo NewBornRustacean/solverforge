@@ -5,14 +5,10 @@ use solverforge_core::domain::{PlanningSolution, SolutionDescriptor};
 use solverforge_core::score::{ParseableScore, Score};
 
 use crate::builder::{
-    AcceptorBuilder, AnyAcceptor, AnyForager, ForagerBuilder, ListContext, ListLeafSelector,
-    ListMoveSelectorBuilder,
+    build_standard_move_selector, AcceptorBuilder, AnyAcceptor, AnyForager, ForagerBuilder,
+    ListContext, ListLeafSelector, ListMoveSelectorBuilder, StandardContext, StandardSelector,
 };
-use crate::descriptor_standard::{
-    build_descriptor_move_selector, descriptor_has_bindings, DescriptorEitherMove,
-    DescriptorLeafSelector,
-};
-use crate::heuristic::r#move::{ListMoveImpl, Move, MoveArena};
+use crate::heuristic::r#move::{EitherMove, ListMoveImpl, Move, MoveArena};
 use crate::heuristic::selector::decorator::{SelectedCountLimitMoveSelector, VecUnionSelector};
 use crate::heuristic::selector::move_selector::MoveSelector;
 use crate::heuristic::selector::nearby_list_change::CrossEntityDistanceMeter;
@@ -21,16 +17,15 @@ use crate::phase::localsearch::{
     AcceptedCountForager, LocalSearchPhase, SimulatedAnnealingAcceptor,
 };
 
-type StandardSelector<S> = VecUnionSelector<S, DescriptorEitherMove<S>, DescriptorLeafSelector<S>>;
 type LimitedStandardSelector<S> =
-    SelectedCountLimitMoveSelector<S, DescriptorEitherMove<S>, StandardSelector<S>>;
+    SelectedCountLimitMoveSelector<S, EitherMove<S, usize>, StandardSelector<S>>;
 type ListSelector<S, V, DM, IDM> =
     VecUnionSelector<S, ListMoveImpl<S, V>, ListLeafSelector<S, V, DM, IDM>>;
 type LimitedListSelector<S, V, DM, IDM> =
     SelectedCountLimitMoveSelector<S, ListMoveImpl<S, V>, ListSelector<S, V, DM, IDM>>;
 
 pub enum UnifiedMove<S, V> {
-    Standard(DescriptorEitherMove<S>),
+    Standard(EitherMove<S, usize>),
     List(ListMoveImpl<S, V>),
 }
 
@@ -275,6 +270,7 @@ pub type UnifiedVnd<S, V, DM, IDM> =
 pub fn build_unified_move_selector<S, V, DM, IDM>(
     config: Option<&MoveSelectorConfig>,
     descriptor: &SolutionDescriptor,
+    standard_ctx: Option<&StandardContext<S>>,
     list_ctx: Option<&ListContext<S, V, DM, IDM>>,
     random_seed: Option<u64>,
 ) -> VecUnionSelector<S, UnifiedMove<S, V>, UnifiedNeighborhood<S, V, DM, IDM>>
@@ -288,6 +284,7 @@ where
     collect_neighborhoods(
         config,
         descriptor,
+        standard_ctx,
         list_ctx,
         random_seed,
         &mut neighborhoods,
@@ -302,6 +299,7 @@ where
 fn collect_neighborhoods<S, V, DM, IDM>(
     config: Option<&MoveSelectorConfig>,
     descriptor: &SolutionDescriptor,
+    standard_ctx: Option<&StandardContext<S>>,
     list_ctx: Option<&ListContext<S, V, DM, IDM>>,
     random_seed: Option<u64>,
     out: &mut Vec<UnifiedNeighborhood<S, V, DM, IDM>>,
@@ -313,10 +311,11 @@ fn collect_neighborhoods<S, V, DM, IDM>(
 {
     match config {
         None => {
-            if descriptor_has_bindings(descriptor) {
-                out.push(UnifiedNeighborhood::Standard(
-                    build_descriptor_move_selector(None, descriptor),
-                ));
+            if let Some(standard_ctx) = standard_ctx.filter(|ctx| !ctx.is_empty()) {
+                out.push(UnifiedNeighborhood::Standard(build_standard_move_selector(
+                    None,
+                    standard_ctx,
+                )));
             }
             if let Some(list_ctx) = list_ctx {
                 out.push(UnifiedNeighborhood::List(ListMoveSelectorBuilder::build(
@@ -328,17 +327,34 @@ fn collect_neighborhoods<S, V, DM, IDM>(
         }
         Some(MoveSelectorConfig::UnionMoveSelector(union)) => {
             for child in &union.selectors {
-                collect_neighborhoods(Some(child), descriptor, list_ctx, random_seed, out);
+                collect_neighborhoods(
+                    Some(child),
+                    descriptor,
+                    standard_ctx,
+                    list_ctx,
+                    random_seed,
+                    out,
+                );
             }
         }
         Some(MoveSelectorConfig::SelectedCountLimitMoveSelector(limit)) => {
             match selector_family(limit.selector.as_ref()) {
-                SelectorFamily::Standard => out.push(UnifiedNeighborhood::LimitedStandard(
-                    SelectedCountLimitMoveSelector::new(
-                        build_descriptor_move_selector(Some(limit.selector.as_ref()), descriptor),
-                        limit.selected_count_limit,
-                    ),
-                )),
+                SelectorFamily::Standard => {
+                    let Some(standard_ctx) = standard_ctx.filter(|ctx| !ctx.is_empty()) else {
+                        panic!(
+                            "selected_count_limit_move_selector wrapped a standard selector in a list-only stock context"
+                        );
+                    };
+                    out.push(UnifiedNeighborhood::LimitedStandard(
+                        SelectedCountLimitMoveSelector::new(
+                            build_standard_move_selector(
+                                Some(limit.selector.as_ref()),
+                                standard_ctx,
+                            ),
+                            limit.selected_count_limit,
+                        ),
+                    ))
+                }
                 SelectorFamily::List => {
                     let Some(list_ctx) = list_ctx else {
                         panic!(
@@ -368,9 +384,13 @@ fn collect_neighborhoods<S, V, DM, IDM>(
         }
         Some(MoveSelectorConfig::ChangeMoveSelector(_))
         | Some(MoveSelectorConfig::SwapMoveSelector(_)) => {
-            out.push(UnifiedNeighborhood::Standard(
-                build_descriptor_move_selector(config, descriptor),
-            ));
+            let Some(standard_ctx) = standard_ctx.filter(|ctx| !ctx.is_empty()) else {
+                panic!("standard move selector configured against a list-only stock context");
+            };
+            out.push(UnifiedNeighborhood::Standard(build_standard_move_selector(
+                config,
+                standard_ctx,
+            )));
         }
         Some(MoveSelectorConfig::ListChangeMoveSelector(_))
         | Some(MoveSelectorConfig::NearbyListChangeMoveSelector(_))
@@ -399,6 +419,7 @@ fn collect_neighborhoods<S, V, DM, IDM>(
 pub fn build_unified_local_search<S, V, DM, IDM>(
     config: Option<&LocalSearchConfig>,
     descriptor: &SolutionDescriptor,
+    standard_ctx: Option<&StandardContext<S>>,
     list_ctx: Option<&ListContext<S, V, DM, IDM>>,
     random_seed: Option<u64>,
 ) -> UnifiedLocalSearch<S, V, DM, IDM>
@@ -436,6 +457,7 @@ where
     let move_selector = build_unified_move_selector(
         config.and_then(|ls| ls.move_selector.as_ref()),
         descriptor,
+        standard_ctx,
         list_ctx,
         random_seed,
     );
@@ -446,6 +468,7 @@ where
 pub fn build_unified_vnd<S, V, DM, IDM>(
     config: &VndConfig,
     descriptor: &SolutionDescriptor,
+    standard_ctx: Option<&StandardContext<S>>,
     list_ctx: Option<&ListContext<S, V, DM, IDM>>,
     random_seed: Option<u64>,
 ) -> UnifiedVnd<S, V, DM, IDM>
@@ -458,7 +481,14 @@ where
 {
     let neighborhoods = if config.neighborhoods.is_empty() {
         let mut neighborhoods = Vec::new();
-        collect_neighborhoods(None, descriptor, list_ctx, random_seed, &mut neighborhoods);
+        collect_neighborhoods(
+            None,
+            descriptor,
+            standard_ctx,
+            list_ctx,
+            random_seed,
+            &mut neighborhoods,
+        );
         neighborhoods
     } else {
         config
@@ -469,6 +499,7 @@ where
                 collect_neighborhoods(
                     Some(selector),
                     descriptor,
+                    standard_ctx,
                     list_ctx,
                     random_seed,
                     &mut neighborhoods,

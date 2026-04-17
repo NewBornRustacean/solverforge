@@ -30,8 +30,8 @@ pub use selector::{
     ListReverseMoveSelector, ListRuinMoveSelector, ListSwapMoveSelector, MimicRecorder,
     MimicRecordingEntitySelector, MimicReplayingEntitySelector, MoveSelector, NearbyDistanceMeter,
     NearbyEntitySelector, NearbyKOptMoveSelector, NearbyListChangeMoveSelector,
-    NearbyListSwapMoveSelector, NearbySelectionConfig, PerEntityValueSelector, Pillar,
-    PillarSelector, RuinMoveSelector, SelectionOrder, StaticValueSelector,
-    SubListChangeMoveSelector, SubListSwapMoveSelector, SubPillarConfig, SwapMoveSelector,
-    ValueSelector,
+    NearbyListSwapMoveSelector, NearbySelectionConfig, PerEntitySliceValueSelector,
+    PerEntityValueSelector, Pillar, PillarSelector, RuinMoveSelector, SelectionOrder,
+    StaticValueSelector, SubListChangeMoveSelector, SubListSwapMoveSelector, SubPillarConfig,
+    SwapMoveSelector, ValueSelector,
 };

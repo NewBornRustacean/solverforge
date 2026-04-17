@@ -55,6 +55,6 @@ pub use selection_order::SelectionOrder;
 pub use sublist_change::{ListMoveSubListChangeSelector, SubListChangeMoveSelector};
 pub use sublist_swap::{ListMoveSubListSwapSelector, SubListSwapMoveSelector};
 pub use value_selector::{
-    FromSolutionValueSelector, PerEntityValueSelector, RangeValueSelector, StaticValueSelector,
-    ValueSelector,
+    FromSolutionValueSelector, PerEntitySliceValueSelector, PerEntityValueSelector,
+    RangeValueSelector, StaticValueSelector, ValueSelector,
 };

@@ -34,8 +34,9 @@ pub mod termination;
 pub mod unified_search;
 
 pub use builder::{
-    AcceptorBuilder, AnyAcceptor, AnyForager, ForagerBuilder, ListContext, ListLeafSelector,
-    ListMoveSelectorBuilder,
+    build_standard_move_selector, AcceptorBuilder, AnyAcceptor, AnyForager, ForagerBuilder,
+    ListContext, ListLeafSelector, ListMoveSelectorBuilder, StandardContext, StandardLeafSelector,
+    StandardSelector, StandardValueSource, StandardVariableContext,
 };
 pub use descriptor_standard::{
     build_descriptor_construction, build_descriptor_move_selector, descriptor_has_bindings,
@@ -75,6 +76,7 @@ pub use heuristic::{
     NearbyEntitySelector,
     NearbyKOptMoveSelector,
     NearbySelectionConfig,
+    PerEntitySliceValueSelector,
     Pillar,
     PillarChangeMove,
     PillarSelector,

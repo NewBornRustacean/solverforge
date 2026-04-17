@@ -6,7 +6,7 @@ use solverforge_core::domain::{PlanningSolution, SolutionDescriptor};
 use solverforge_core::score::{ParseableScore, Score};
 
 use super::construction::{ListConstructionArgs, UnifiedConstruction};
-use crate::builder::ListContext;
+use crate::builder::{ListContext, StandardContext};
 use crate::heuristic::selector::nearby_list_change::CrossEntityDistanceMeter;
 use crate::phase::{sequence::PhaseSequence, Phase};
 use crate::unified_search::{
@@ -65,6 +65,7 @@ pub type UnifiedRuntimePhase<S, V, DM, IDM> = RuntimePhase<
 pub fn build_phases<S, V, DM, IDM>(
     config: &SolverConfig,
     descriptor: &SolutionDescriptor,
+    standard_ctx: Option<&StandardContext<S>>,
     list_ctx: Option<&ListContext<S, V, DM, IDM>>,
     list_construction: Option<ListConstructionArgs<S, V>>,
     list_variable_name: Option<&'static str>,
@@ -87,6 +88,7 @@ where
         phases.push(RuntimePhase::LocalSearch(build_unified_local_search(
             None,
             descriptor,
+            standard_ctx,
             list_ctx,
             config.random_seed,
         )));
@@ -107,6 +109,7 @@ where
                 phases.push(RuntimePhase::LocalSearch(build_unified_local_search(
                     Some(ls),
                     descriptor,
+                    standard_ctx,
                     list_ctx,
                     config.random_seed,
                 )));
@@ -115,6 +118,7 @@ where
                 phases.push(RuntimePhase::Vnd(build_unified_vnd(
                     vnd,
                     descriptor,
+                    standard_ctx,
                     list_ctx,
                     config.random_seed,
                 )));

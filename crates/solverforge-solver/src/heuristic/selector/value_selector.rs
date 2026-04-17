@@ -165,6 +165,52 @@ where
     }
 }
 
+pub struct PerEntitySliceValueSelector<S, V> {
+    extractor: for<'a> fn(&'a S, usize) -> &'a [V],
+    _phantom: PhantomData<(fn() -> S, fn() -> V)>,
+}
+
+impl<S, V> Debug for PerEntitySliceValueSelector<S, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PerEntitySliceValueSelector").finish()
+    }
+}
+
+impl<S, V> PerEntitySliceValueSelector<S, V> {
+    pub fn new(extractor: for<'a> fn(&'a S, usize) -> &'a [V]) -> Self {
+        Self {
+            extractor,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<S, V> ValueSelector<S, V> for PerEntitySliceValueSelector<S, V>
+where
+    S: PlanningSolution,
+    V: Copy + Send + Debug + 'static,
+{
+    fn iter_typed<'a, D: Director<S>>(
+        &'a self,
+        score_director: &'a D,
+        _descriptor_index: usize,
+        entity_index: usize,
+    ) -> impl Iterator<Item = V> + 'a {
+        (self.extractor)(score_director.working_solution(), entity_index)
+            .iter()
+            .copied()
+    }
+
+    fn size<D: Director<S>>(
+        &self,
+        score_director: &D,
+        _descriptor_index: usize,
+        entity_index: usize,
+    ) -> usize {
+        (self.extractor)(score_director.working_solution(), entity_index).len()
+    }
+}
+
 impl<S, V> ValueSelector<S, V> for FromSolutionValueSelector<S, V>
 where
     S: PlanningSolution,
