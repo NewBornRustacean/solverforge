@@ -27,7 +27,9 @@ pub use solverforge_scoring::{Director, ScoreDirector, ShadowVariableSupport, So
 pub use tokio::sync::mpsc::UnboundedSender;
 
 // Solver infrastructure
-pub use solverforge_solver::builder::ListContext;
+pub use solverforge_solver::builder::{
+    ListContext, StandardContext, StandardValueSource, StandardVariableContext,
+};
 pub use solverforge_solver::heuristic::selector::{
     DefaultCrossEntityDistanceMeter, DefaultDistanceMeter, FromSolutionEntitySelector,
 };

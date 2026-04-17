@@ -5,6 +5,7 @@ use syn::Ident;
 use crate::attr_parse::has_attribute;
 use crate::list_registry::lookup_list_entity_metadata;
 
+use super::standard_runtime::generate_standard_runtime_support;
 use super::type_helpers::extract_collection_inner_type;
 
 pub(super) fn generate_runtime_solve_internal(
@@ -109,6 +110,9 @@ pub(super) fn generate_runtime_phase_support(
             lookup_list_entity_metadata(&type_name).map(|_| (idx, field_type))
         })
         .collect();
+    let standard_support = generate_standard_runtime_support(fields, solution_name);
+    let standard_setup = standard_support.setup.clone();
+    let standard_arg = standard_support.arg.clone();
 
     if !list_owners.is_empty() {
         let cross_enum_ident = format_ident!("__{}StockCrossDistanceMeter", solution_name);
@@ -207,6 +211,7 @@ pub(super) fn generate_runtime_phase_support(
                         return ::solverforge::__internal::build_phases(
                             config,
                             &descriptor,
+                            #standard_arg,
                             ::core::option::Option::Some(&list_ctx),
                             ::core::option::Option::Some(construction),
                             ::core::option::Option::Some(#list_trait::STOCK_LIST_VARIABLE_NAME),
@@ -293,10 +298,12 @@ pub(super) fn generate_runtime_phase_support(
                     >
                 > {
                     let descriptor = Self::descriptor();
+                    #standard_setup
                     #(#list_runtime_branches)*
                     ::solverforge::__internal::build_phases(
                         config,
                         &descriptor,
+                        #standard_arg,
                         ::core::option::Option::None,
                         ::core::option::Option::None,
                         ::core::option::Option::None,
@@ -346,9 +353,11 @@ pub(super) fn generate_runtime_phase_support(
                 >
             > {
                 let descriptor = Self::descriptor();
+                #standard_setup
                 ::solverforge::__internal::build_phases(
                     config,
                     &descriptor,
+                    #standard_arg,
                     ::core::option::Option::None,
                     ::core::option::Option::None,
                     ::core::option::Option::None,

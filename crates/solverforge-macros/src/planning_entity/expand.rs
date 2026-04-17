@@ -7,6 +7,7 @@ use crate::attr_parse::{
 };
 
 use super::list_variable::{generate_list_metadata, generate_list_trait_impl};
+use super::standard_variable::generate_standard_helpers;
 use super::utils::{field_is_option_usize, field_option_inner_type};
 
 pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
@@ -50,6 +51,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         .iter()
         .filter(|f| has_attribute(&f.attrs, "planning_variable"))
         .collect();
+    let standard_helpers = generate_standard_helpers(name, fields, &planning_variables)?;
 
     let list_variables: Vec<_> = fields
         .iter()
@@ -188,6 +190,10 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             let field_name_str = field_name.to_string();
             let supports_usize_hooks = field_is_option_usize(&field.ty);
             let attr = get_attribute(&field.attrs, "planning_variable").unwrap();
+            let typed_provider_name = syn::Ident::new(
+                &format!("__solverforge_values_for_{}_typed", field_name_str),
+                proc_macro2::Span::call_site(),
+            );
             let value_range_provider = parse_attribute_string(attr, "value_range_provider")
                 .or_else(|| parse_attribute_string(attr, "value_range"));
             let provider_helper = value_range_provider
@@ -200,9 +206,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                             .unwrap_or(false)
                     })
                 })
-                .map(|provider_id| {
-                    let provider_field =
-                        syn::Ident::new(&provider_id, proc_macro2::Span::call_site());
+                .map(|_provider_id| {
                     let provider_getter_name = syn::Ident::new(
                         &format!("__solverforge_values_for_{}", field_name_str),
                         proc_macro2::Span::call_site(),
@@ -213,7 +217,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                             let entity = entity
                                 .downcast_ref::<Self>()
                                 .expect("entity type mismatch for value provider");
-                            entity.#provider_field.clone()
+                            Self::#typed_provider_name(entity).to_vec()
                         }
                     }
                 });
@@ -227,6 +231,14 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                     &format!("__solverforge_set_{}", field_name_str),
                     proc_macro2::Span::call_site(),
                 );
+                let typed_getter_name = syn::Ident::new(
+                    &format!("__solverforge_get_{}_typed", field_name_str),
+                    proc_macro2::Span::call_site(),
+                );
+                let typed_setter_name = syn::Ident::new(
+                    &format!("__solverforge_set_{}_typed", field_name_str),
+                    proc_macro2::Span::call_site(),
+                );
 
                 quote! {
                     #[inline]
@@ -234,7 +246,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                         let entity = entity
                             .downcast_ref::<Self>()
                             .expect("entity type mismatch for planning variable getter");
-                        entity.#field_name
+                        Self::#typed_getter_name(entity)
                     }
 
                     #[inline]
@@ -245,7 +257,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                         let entity = entity
                             .downcast_mut::<Self>()
                             .expect("entity type mismatch for planning variable setter");
-                        entity.#field_name = value;
+                        Self::#typed_setter_name(entity, value);
                     }
 
                     #provider_helper
@@ -451,6 +463,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
 
         impl #impl_generics #name #ty_generics #where_clause {
             #(#variable_helpers)*
+            #standard_helpers
             #list_metadata
 
             pub fn entity_descriptor(solution_field: &'static str) -> ::solverforge::__internal::EntityDescriptor {
