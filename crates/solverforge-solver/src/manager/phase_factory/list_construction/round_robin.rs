@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::Director;
 
+use crate::builder::ListVariableContext;
 use crate::phase::Phase;
 use crate::scope::{PhaseScope, SolverScope, StepScope};
 use crate::PhaseFactory;
@@ -205,5 +206,100 @@ where
 
     fn phase_type_name(&self) -> &'static str {
         "ListConstruction"
+    }
+}
+
+pub(crate) struct RuntimeListRoundRobinPhase<S, E, DM, IDM>
+where
+    S: PlanningSolution,
+    E: Copy + PartialEq + Eq + std::hash::Hash + Send + Sync + 'static,
+{
+    pub(crate) ctx: ListVariableContext<S, E, DM, IDM>,
+}
+
+impl<S, E, DM, IDM> std::fmt::Debug for RuntimeListRoundRobinPhase<S, E, DM, IDM>
+where
+    S: PlanningSolution,
+    E: Copy + PartialEq + Eq + std::hash::Hash + Send + Sync + 'static,
+    DM: Send,
+    IDM: Send,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeListRoundRobinPhase").finish()
+    }
+}
+
+impl<S, E, DM, IDM, D, BestCb> Phase<S, D, BestCb> for RuntimeListRoundRobinPhase<S, E, DM, IDM>
+where
+    S: PlanningSolution,
+    E: Copy + PartialEq + Eq + std::hash::Hash + Send + Sync + 'static,
+    DM: Send,
+    IDM: Send,
+    D: Director<S>,
+    BestCb: crate::scope::ProgressCallback<S>,
+{
+    fn solve(&mut self, solver_scope: &mut SolverScope<S, D, BestCb>) {
+        let mut phase_scope = PhaseScope::new(solver_scope, 0);
+        let solution = phase_scope.score_director().working_solution();
+        let n_elements = (self.ctx.element_count)(solution);
+        let n_entities = (self.ctx.entity_count)(solution);
+
+        if n_entities == 0 || n_elements == 0 {
+            let _score = phase_scope.score_director_mut().calculate_score();
+            phase_scope.update_best_solution();
+            return;
+        }
+
+        let assigned = (self.ctx.assigned_elements)(solution);
+        if assigned.len() >= n_elements {
+            let _score = phase_scope.score_director_mut().calculate_score();
+            phase_scope.update_best_solution();
+            return;
+        }
+
+        let assigned_set: std::collections::HashSet<E> = assigned.into_iter().collect();
+        let mut entity_idx = 0;
+
+        for elem_idx in 0..n_elements {
+            if phase_scope
+                .solver_scope_mut()
+                .should_terminate_construction()
+            {
+                break;
+            }
+
+            let element = (self.ctx.index_to_element)(
+                phase_scope.score_director().working_solution(),
+                elem_idx,
+            );
+            if assigned_set.contains(&element) {
+                continue;
+            }
+
+            let mut step_scope = StepScope::new(&mut phase_scope);
+            step_scope.apply_committed_change(|score_director| {
+                let insert_pos = (self.ctx.list_len)(score_director.working_solution(), entity_idx);
+                score_director.before_variable_changed(self.ctx.descriptor_index, entity_idx);
+                (self.ctx.list_insert)(
+                    score_director.working_solution_mut(),
+                    entity_idx,
+                    insert_pos,
+                    element,
+                );
+                score_director.after_variable_changed(self.ctx.descriptor_index, entity_idx);
+            });
+
+            let step_score = step_scope.calculate_score();
+            step_scope.set_step_score(step_score);
+            step_scope.complete();
+
+            entity_idx = (entity_idx + 1) % n_entities;
+        }
+
+        phase_scope.update_best_solution();
+    }
+
+    fn phase_type_name(&self) -> &'static str {
+        "ListRoundRobin"
     }
 }

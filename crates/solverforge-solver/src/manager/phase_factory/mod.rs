@@ -28,6 +28,7 @@ mod local_search;
 pub use construction::ConstructionPhaseFactory;
 pub use k_opt::{KOptPhase, KOptPhaseBuilder};
 pub use list_clarke_wright::ListClarkeWrightPhase;
+pub(crate) use list_construction::solve_specialized_list_construction;
 pub use list_construction::{
     ListCheapestInsertionPhase, ListConstructionPhase, ListConstructionPhaseBuilder,
     ListRegretInsertionPhase,

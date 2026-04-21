@@ -13,11 +13,9 @@ use crate::descriptor_standard::{
     build_descriptor_construction, standard_work_remaining_with_frontier,
 };
 use crate::heuristic::selector::nearby_list_change::CrossEntityDistanceMeter;
-use crate::manager::{
-    ListCheapestInsertionPhase, ListClarkeWrightPhase, ListKOptPhase, ListRegretInsertionPhase,
-};
+use crate::manager::solve_specialized_list_construction;
 use crate::phase::{sequence::PhaseSequence, Phase};
-use crate::scope::{PhaseScope, ProgressCallback, SolverScope, StepScope};
+use crate::scope::{ProgressCallback, SolverScope};
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
@@ -93,24 +91,6 @@ impl<S, DM, IDM> ListVariableMetadata<S, DM, IDM> {
     }
 }
 
-struct ListRoundRobinPhase<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    V: Copy + PartialEq + Eq + Hash + Send + Sync + 'static,
-{
-    ctx: crate::builder::ListVariableContext<S, V, DM, IDM>,
-}
-
-impl<S, V, DM, IDM> Debug for ListRoundRobinPhase<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    V: Copy + PartialEq + Eq + Hash + Send + Sync + 'static,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ListRoundRobinPhase").finish()
-    }
-}
-
 fn has_explicit_target(config: &ConstructionHeuristicConfig) -> bool {
     config.target.variable_name.is_some() || config.target.entity_class.is_some()
 }
@@ -137,17 +117,6 @@ fn is_standard_only_heuristic(heuristic: ConstructionHeuristicType) -> bool {
             | ConstructionHeuristicType::AllocateEntityFromQueue
             | ConstructionHeuristicType::AllocateToValueFromQueue
     )
-}
-
-fn list_work_remaining<S, V, DM, IDM>(
-    ctx: &crate::builder::ListVariableContext<S, V, DM, IDM>,
-    solution: &S,
-) -> bool
-where
-    S: PlanningSolution,
-    V: Copy + PartialEq + Eq + Hash + Send + Sync + 'static,
-{
-    (ctx.assigned_elements)(solution).len() < (ctx.element_count)(solution)
 }
 
 fn matching_list_variables<S, V, DM, IDM>(
@@ -185,80 +154,6 @@ where
     model
         .scalar_variables()
         .any(|ctx| !explicit_target || ctx.matches_target(entity_class, variable_name))
-}
-
-impl<S, V, DM, IDM, D, ProgressCb> Phase<S, D, ProgressCb> for ListRoundRobinPhase<S, V, DM, IDM>
-where
-    S: PlanningSolution,
-    V: Copy + PartialEq + Eq + Hash + Send + Sync + Debug + 'static,
-    DM: Clone + Send,
-    IDM: Clone + Send,
-    D: solverforge_scoring::Director<S>,
-    ProgressCb: ProgressCallback<S>,
-{
-    fn solve(&mut self, solver_scope: &mut SolverScope<'_, S, D, ProgressCb>) {
-        let mut phase_scope = PhaseScope::new(solver_scope, 0);
-        let solution = phase_scope.score_director().working_solution();
-        let n_elements = (self.ctx.element_count)(solution);
-        let n_entities = (self.ctx.entity_count)(solution);
-
-        if n_entities == 0 || n_elements == 0 {
-            let _score = phase_scope.score_director_mut().calculate_score();
-            phase_scope.update_best_solution();
-            return;
-        }
-
-        let assigned = (self.ctx.assigned_elements)(solution);
-        if assigned.len() >= n_elements {
-            let _score = phase_scope.score_director_mut().calculate_score();
-            phase_scope.update_best_solution();
-            return;
-        }
-
-        let assigned_set: std::collections::HashSet<V> = assigned.into_iter().collect();
-        let mut entity_idx = 0;
-
-        for elem_idx in 0..n_elements {
-            if phase_scope
-                .solver_scope_mut()
-                .should_terminate_construction()
-            {
-                break;
-            }
-
-            let element = (self.ctx.index_to_element)(
-                phase_scope.score_director().working_solution(),
-                elem_idx,
-            );
-            if assigned_set.contains(&element) {
-                continue;
-            }
-
-            let mut step_scope = StepScope::new(&mut phase_scope);
-            step_scope.apply_committed_change(|score_director| {
-                let insert_pos = (self.ctx.list_len)(score_director.working_solution(), entity_idx);
-                score_director.before_variable_changed(self.ctx.descriptor_index, entity_idx);
-                (self.ctx.list_insert)(
-                    score_director.working_solution_mut(),
-                    entity_idx,
-                    insert_pos,
-                    element,
-                );
-                score_director.after_variable_changed(self.ctx.descriptor_index, entity_idx);
-            });
-
-            let step_score = step_scope.calculate_score();
-            step_scope.set_step_score(step_score);
-            step_scope.complete();
-            entity_idx = (entity_idx + 1) % n_entities;
-        }
-
-        phase_scope.update_best_solution();
-    }
-
-    fn phase_type_name(&self) -> &'static str {
-        "ListRoundRobin"
-    }
 }
 
 pub struct Construction<S, V, DM, IDM>
@@ -308,100 +203,12 @@ where
             panic!("list construction configured against a scalar-only context");
         }
 
-        let mut ran_phase = false;
-        for ctx in list_variables {
-            if !list_work_remaining(ctx, solver_scope.working_solution()) {
-                continue;
-            }
-            match config.construction_heuristic_type {
-                ConstructionHeuristicType::ListRoundRobin => {
-                    ListRoundRobinPhase { ctx: ctx.clone() }.solve(solver_scope);
-                }
-                ConstructionHeuristicType::ListCheapestInsertion => {
-                    ListCheapestInsertionPhase::new(
-                        ctx.element_count,
-                        ctx.assigned_elements,
-                        ctx.entity_count,
-                        ctx.list_len,
-                        ctx.list_insert,
-                        ctx.construction_list_remove,
-                        ctx.index_to_element,
-                        ctx.descriptor_index,
-                    )
-                    .solve(solver_scope);
-                }
-                ConstructionHeuristicType::ListRegretInsertion => {
-                    ListRegretInsertionPhase::new(
-                        ctx.element_count,
-                        ctx.assigned_elements,
-                        ctx.entity_count,
-                        ctx.list_len,
-                        ctx.list_insert,
-                        ctx.construction_list_remove,
-                        ctx.index_to_element,
-                        ctx.descriptor_index,
-                    )
-                    .solve(solver_scope);
-                }
-                ConstructionHeuristicType::ListClarkeWright => {
-                    let (Some(depot), Some(dist), Some(load), Some(cap), Some(assign)) = (
-                        ctx.cw_depot_fn,
-                        ctx.cw_distance_fn,
-                        ctx.cw_element_load_fn,
-                        ctx.cw_capacity_fn,
-                        ctx.cw_assign_route_fn,
-                    ) else {
-                        panic!(
-                            "list_clarke_wright requires depot_fn, distance_fn, element_load_fn, capacity_fn, and assign_route_fn"
-                        );
-                    };
-                    ListClarkeWrightPhase::new(
-                        ctx.element_count,
-                        ctx.assigned_elements,
-                        ctx.entity_count,
-                        ctx.list_len,
-                        assign,
-                        ctx.index_to_element,
-                        depot,
-                        dist,
-                        load,
-                        cap,
-                        ctx.merge_feasible_fn,
-                        ctx.descriptor_index,
-                    )
-                    .solve(solver_scope);
-                }
-                ConstructionHeuristicType::ListKOpt => {
-                    let (Some(get_route), Some(set_route), Some(ko_depot), Some(ko_dist)) = (
-                        ctx.k_opt_get_route,
-                        ctx.k_opt_set_route,
-                        ctx.k_opt_depot_fn,
-                        ctx.k_opt_distance_fn,
-                    ) else {
-                        panic!(
-                            "list_k_opt requires k_opt_get_route, k_opt_set_route, k_opt_depot_fn, and k_opt_distance_fn"
-                        );
-                    };
-                    ListKOptPhase::<S, V>::new(
-                        config.k,
-                        ctx.entity_count,
-                        get_route,
-                        set_route,
-                        ko_depot,
-                        ko_dist,
-                        ctx.k_opt_feasible_fn,
-                        ctx.descriptor_index,
-                    )
-                    .solve(solver_scope);
-                }
-                other => panic!(
-                    "list construction heuristic {:?} configured against a list variable",
-                    other
-                ),
-            }
-            ran_phase = true;
-        }
-        ran_phase
+        solve_specialized_list_construction(
+            config.construction_heuristic_type,
+            config.k,
+            solver_scope,
+            list_variables,
+        )
     }
 }
 
