@@ -24,12 +24,12 @@ Solver engine: phases, moves, selectors, acceptors, foragers, termination, and s
 src/
 ├── lib.rs                               — Crate root; module declarations, re-exports
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
-├── runtime.rs                           — Runtime assembly, frontier-aware descriptor-standard construction dispatch, no-op construction finalization, and list metadata hooks
+├── runtime.rs                           — Runtime assembly over `ModelContext`; chooses unified generic construction or specialized scalar/list phases
 ├── list_solver_tests.rs                 — Tests
 ├── descriptor_standard.rs               — Re-exports the explicit descriptor-standard bindings, selectors, move types, and construction helpers
 ├── descriptor_standard/
 │   ├── bindings.rs                      — Standard-variable binding discovery, matching, and frontier-aware work checks
-│   ├── frontier.rs                      — Revision-scoped standard construction completion cache
+│   ├── frontier.rs                      — Compatibility re-export to the shared construction frontier
 │   ├── move_types.rs                    — DescriptorChangeMove<S>, DescriptorSwapMove<S>, DescriptorEitherMove<S>
 │   ├── selectors.rs                     — DescriptorChangeMoveSelector<S>, DescriptorSwapMoveSelector<S>, DescriptorLeafSelector<S>, build_descriptor_move_selector(); optional assigned variables can emit one `Some(v) -> None` change
 │   ├── construction.rs                  — DescriptorConstruction<S>, DescriptorEntityPlacer<S>, build_descriptor_construction(); descriptor placements carry optional keep-current legality and slot identity
@@ -42,7 +42,7 @@ src/
 │   ├── acceptor.rs                      — AnyAcceptor<S> enum, AcceptorBuilder
 │   ├── acceptor_tests.rs                — Tests
 │   ├── forager.rs                       — AnyForager<S> enum, ForagerBuilder
-│   ├── context.rs                       — ModelContext<S, V, DM, IDM>, VariableContext<S, V, DM, IDM>, IntraDistanceAdapter<T>
+│   ├── context.rs                       — ModelContext<S, V, DM, IDM>, VariableContext<S, V, DM, IDM>, IntraDistanceAdapter<T>, expanded ListVariableContext construction hooks
 │   ├── selector.rs                      — Selector<S, V, DM, IDM>, Neighborhood<S, V, DM, IDM>, build_move_selector() over published ModelContext variable contexts
 │   ├── list_selector.rs                 — Re-exports list selector leaf and builder modules
 │   └── list_selector/
@@ -162,10 +162,12 @@ src/
 │   │   ├── mod.rs                       — ForagerType enum, ConstructionHeuristicConfig, re-exports
 │   │   ├── decision.rs                  — Shared baseline/tie-breaking helpers for construction choice resolution
 │   │   ├── evaluation.rs                — Trial-move evaluation via RecordingDirector with exact rollback
+│   │   ├── frontier.rs                  — Revision-scoped ConstructionFrontier shared by generic scalar and list work
 │   │   ├── phase.rs                     — ConstructionHeuristicPhase<S, M, P, Fo>
 │   │   ├── forager.rs                   — ConstructionChoice enum, ConstructionForager trait, FirstFit/BestFit/FirstFeasible/WeakestFit/StrongestFit foragers
 │   │   ├── placer.rs                    — EntityPlacer trait, Placement, QueuedEntityPlacer, SortedEntityPlacer; queued placements expose optional keep-current legality
-│   │   ├── slot.rs                      — ConstructionSlotId for descriptor-standard frontier tracking
+│   │   ├── slot.rs                      — ConstructionSlotId and ConstructionListElementId for unified frontier tracking
+│   │   ├── unified.rs                   — Canonical generic scalar/list/mixed construction engine used by runtime assembly
 │   │   ├── phase_tests.rs              — Tests
 │   │   ├── forager_tests.rs            — Tests
 │   │   └── placer_tests.rs             — Tests
@@ -822,13 +824,12 @@ formatting edges.
 Runtime helpers:
 
 - `RuntimePhase<C, LS, VND>` — generic runtime phase enum with `Construction`, `LocalSearch`, `Vnd`
-- `Construction<S, V>` — construction phase over scalar metadata plus ordered list-owner construction hooks
-- `ConstructionArgs<S, V>` — per-list-owner function-pointer bundle for list construction hooks
+- `Construction<S, V, DM, IDM>` — runtime construction phase over one `ModelContext`; generic `FirstFit` and `CheapestInsertion` dispatch into `phase/construction/unified.rs`, while specialized scalar-only and list-only heuristics keep their dedicated paths
 - `ListVariableMetadata<S, DM, IDM>` — list-variable metadata surfaced to macro-generated runtime code
 - `ListVariableEntity<S>` — list-variable accessors plus `HAS_LIST_VARIABLE`, `LIST_VARIABLE_NAME`, and `LIST_ELEMENT_SOURCE`
-- `build_phases()` — builds the runtime phase sequence from `SolverConfig`, `SolutionDescriptor`, one `ModelContext`, and ordered list construction hooks for zero or more list owners
+- `build_phases()` — builds the runtime phase sequence from `SolverConfig`, `SolutionDescriptor`, and one `ModelContext`
 
-Scalar and list-heavy models both target this same runtime layer. Documentation and examples should describe one canonical runtime path rather than separate legacy standard/list builders, and multi-owner list construction should be modeled as repeated `ConstructionArgs` records rather than a special-case runtime split.
+Scalar-only, list-only, and mixed planning models now target the same canonical runtime layer through `ModelContext`. Generic construction order is the descriptor-backed variable order emitted by the macros; specialized list heuristics remain explicit non-generic phases.
 
 ### `AnyTermination` / `build_termination()` — `run.rs`
 

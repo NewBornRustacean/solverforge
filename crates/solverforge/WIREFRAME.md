@@ -172,7 +172,7 @@ Used exclusively by macro-generated code. Not public API.
 - `FromSolutionEntitySelector`, `DefaultCrossEntityDistanceMeter`, `DefaultDistanceMeter`
 - `KOptPhaseBuilder`, `ListConstructionPhaseBuilder`
 - `PhaseFactory`, `SolverFactory`
-- `Construction`, `ConstructionArgs`, `PhaseSequence`, `RuntimePhase`
+- `Construction`, `PhaseSequence`, `RuntimePhase`
 - `ProgressCallback`, `SolverScope`
 - `SolverRuntime`, `SolverEvent`, `SolverTelemetry`
 - `build_phases`, `descriptor_has_bindings`, `log_solve_start`, `run_solver`, `run_solver_with_config`

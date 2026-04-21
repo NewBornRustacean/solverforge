@@ -37,7 +37,8 @@ Open http://localhost:7860 to see your solver in action.
 Start new projects with the standalone [`solverforge-cli`](https://github.com/solverforge/solverforge-cli) repository. It scaffolds complete SolverForge applications and sample data, while this repository provides the runtime crates you extend once the scaffold exists.
 
 The current CLI scaffolds a neutral shell via `solverforge new <name>`. You shape that shell afterward with `solverforge generate ...`, adding facts, entities, variables, constraints, and generated data as the domain becomes concrete. Generated applications can mix scalar planning variables with multiple independent planning lists, and the emitted code targets the same retained-runtime facade documented in this repository.
-Standard variables declared with `allows_unassigned = true` keep optional-assignment semantics in the built-in runtime: stock construction can keep `None` when it is the best legal baseline while still progressing through equal-score assignment plateaus, pause snapshots stay score-exact after those keep-current steps, intentionally kept `None` stays completed for the current working-solution revision, later revision-advancing runtime mutations reopen those optional slots for reconsideration, and stock local search can both assign and unassign.
+The generated runtime now builds one `ModelContext` for every planning model. Generic `FirstFit` and `CheapestInsertion` operate on that single scalar/list/mixed metadata graph, while specialized list heuristics such as round-robin, regret insertion, Clarke-Wright, and list K-opt remain explicit opt-in phases.
+Standard variables declared with `allows_unassigned = true` keep optional-assignment semantics in that runtime: stock construction can keep `None` when it is the best legal baseline, revision-advancing mutations reopen those completed optional slots for reconsideration, and stock local search can both assign and unassign.
 
 ## Extend the Scaffold
 
@@ -73,7 +74,7 @@ Current public naming follows neutral Rust contracts rather than `Typed*` prefix
 - **ConstraintStream API**: Declarative constraint definition with fluent builders
 - **SERIO Engine**: Scoring Engine for Real-time Incremental Optimization
 - **Solver Phases**:
-  - Construction Heuristics for standard, list, and mixed planning models, including multiple list owners in one solution
+  - Generic Construction Heuristics (`FirstFit`, `CheapestInsertion`) over one mixed scalar/list `ModelContext`, plus specialized scalar-only and list-only construction phases
   - Local Search (Hill Climbing, Simulated Annealing, Tabu Search, Late Acceptance, Great Deluge, Step Counting Hill Climbing, Diversified Late Acceptance)
   - Exhaustive Search (Branch and Bound with DFS/BFS/Score-First)
   - Partitioned Search (multi-threaded via rayon)
