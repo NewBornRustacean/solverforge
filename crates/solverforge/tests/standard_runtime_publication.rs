@@ -34,8 +34,9 @@ struct Plan {
 fn define_constraints() -> impl ConstraintSet<Plan, HardSoftScore> {
     (ConstraintFactory::<Plan, HardSoftScore>::new()
         .tasks()
-        .penalize_with(|_| HardSoftScore::of(0, 0))
-        .named("noop"),)
+        .filter(|task: &Task| task.resource_idx.is_none())
+        .penalize(HardSoftScore::of(0, 1))
+        .named("unassigned task"),)
 }
 
 fn seeded_plan() -> Plan {
