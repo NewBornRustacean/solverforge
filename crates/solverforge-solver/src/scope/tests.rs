@@ -3,6 +3,7 @@
 use std::any::TypeId;
 
 use super::*;
+use crate::phase::construction::{ConstructionListElementId, ConstructionSlotId};
 use crate::test_utils::create_simple_nqueens_director;
 use solverforge_core::domain::{PlanningSolution, SolutionDescriptor};
 use solverforge_core::score::SoftScore;
@@ -185,4 +186,40 @@ fn test_solver_scope_mutate_advances_revision_once() {
     assert_eq!(scope.solution_revision(), initial_revision + 1);
     assert!(scope.current_score().is_none());
     assert_eq!(scope.working_solution().marker, 5);
+}
+
+#[test]
+fn test_replace_working_solution_reinitializes_revision_and_frontier() {
+    let descriptor = SolutionDescriptor::new("TieSolution", TypeId::of::<TieSolution>());
+    let director = ScoreDirector::simple(
+        TieSolution {
+            marker: 0,
+            score: None,
+        },
+        descriptor,
+        |_solution, _descriptor_index| 0,
+    );
+    let mut scope = SolverScope::new(director);
+    scope.start_solving();
+
+    let slot_id = ConstructionSlotId::new(0, 0);
+    let element_id = ConstructionListElementId::new(0, 0);
+
+    scope.mark_standard_slot_completed(slot_id);
+    scope.mark_list_element_completed(element_id);
+    scope.mutate(|score_director| {
+        score_director.working_solution_mut().marker = 3;
+    });
+    assert!(scope.solution_revision() > 1);
+
+    let score = scope.replace_working_solution_and_reinitialize(TieSolution {
+        marker: 9,
+        score: None,
+    });
+
+    assert_eq!(score, SoftScore::of(0));
+    assert_eq!(scope.solution_revision(), 1);
+    assert!(!scope.is_standard_slot_completed(slot_id));
+    assert!(!scope.is_list_element_completed(element_id));
+    assert_eq!(scope.working_solution().marker, 9);
 }

@@ -1,4 +1,6 @@
 use super::*;
+use crate::phase::construction::{ConstructionListElementId, ConstructionSlotId};
+use crate::scope::SolverScope;
 use solverforge_core::domain::{EntityCollectionExtractor, EntityDescriptor, SolutionDescriptor};
 use solverforge_core::score::SoftScore;
 use solverforge_scoring::ScoreDirector;
@@ -86,4 +88,26 @@ fn closure_problem_change() {
     change.apply(&mut director);
 
     assert!(director.working_solution().tasks.is_empty());
+}
+
+#[test]
+fn problem_change_apply_through_solver_scope_invalidates_frontier_revision() {
+    let director = create_director(vec![Task { id: 0 }]);
+    let mut scope = SolverScope::new(director);
+    scope.start_solving();
+
+    let slot_id = ConstructionSlotId::new(0, 0);
+    let element_id = ConstructionListElementId::new(0, 0);
+    scope.mark_standard_slot_completed(slot_id);
+    scope.mark_list_element_completed(element_id);
+    let initial_revision = scope.solution_revision();
+
+    let change = AddTask { id: 1 };
+    scope.mutate(|score_director| change.apply(score_director));
+
+    assert_eq!(scope.solution_revision(), initial_revision + 1);
+    assert!(!scope.is_standard_slot_completed(slot_id));
+    assert!(!scope.is_list_element_completed(element_id));
+    assert_eq!(scope.working_solution().tasks.len(), 2);
+    assert_eq!(scope.working_solution().tasks[1].id, 1);
 }

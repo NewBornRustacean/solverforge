@@ -107,3 +107,32 @@ fn golden_solution_expansion_binds_owner_specific_list_helpers() {
     assert!(expanded.contains("Self :: __solverforge_total_list_entities"));
     assert!(expanded.contains("Self :: __solverforge_total_list_elements"));
 }
+
+#[test]
+fn golden_solution_expansion_sorts_runtime_variables_by_descriptor_order() {
+    let input = parse_quote! {
+        #[solverforge_constraints_path = "crate::constraints::create_constraints"]
+        struct Plan {
+            #[problem_fact_collection]
+            workers: Vec<Worker>,
+            #[planning_entity_collection]
+            routes: Vec<Route>,
+            #[problem_fact_collection]
+            visits: Vec<Visit>,
+            #[planning_score]
+            score: Option<HardSoftScore>,
+        }
+    };
+
+    let expanded = expand_derive(input)
+        .expect("solution expansion should succeed")
+        .to_string();
+
+    assert!(expanded.contains("__solverforge_variables . sort_by_key"));
+    assert!(expanded.contains("descriptor . entity_descriptors"));
+    assert!(expanded.contains("variable_descriptors"));
+    assert!(
+        expanded.contains("position (| descriptor_var | descriptor_var . name == variable_name)")
+    );
+    assert!(expanded.contains(":: solverforge :: __internal :: build_phases"));
+}
