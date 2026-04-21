@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.12](///compare/v0.8.11...v0.8.12) (2026-04-21)
+
+
+### Features
+
+* **construction:** emit engine phase telemetry 1f5cff7
+* **solver:** add revision-aware optional construction semantics 0d0d9de
+
+
+### Bug Fixes
+
+* **construction:** honor optional none in first-fit 54ad31f
+* **localsearch:** retain best accepted moves without early exit e66b494
+* **runtime:** route pure scalar construction to descriptor path 77c5f42
+
 ## [0.8.10](///compare/v0.8.9...v0.8.10) (2026-04-20)
 
 
