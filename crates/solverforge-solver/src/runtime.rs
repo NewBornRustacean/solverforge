@@ -119,6 +119,14 @@ fn is_standard_only_heuristic(heuristic: ConstructionHeuristicType) -> bool {
     )
 }
 
+fn should_use_descriptor_standard_path(
+    heuristic: ConstructionHeuristicType,
+    has_matching_scalar: bool,
+    has_matching_list: bool,
+) -> bool {
+    has_matching_scalar && (!has_matching_list || is_standard_only_heuristic(heuristic))
+}
+
 fn matching_list_variables<S, V, DM, IDM>(
     config: Option<&ConstructionHeuristicConfig>,
     model: &ModelContext<S, V, DM, IDM>,
@@ -244,6 +252,7 @@ where
             .unwrap_or(ConstructionHeuristicType::FirstFit);
         let list_variables = matching_list_variables(config, &self.model);
         let has_matching_scalar = has_matching_scalar_target(config, &self.model);
+        let has_matching_list = !list_variables.is_empty();
         let explicit_target = config.is_some_and(has_explicit_target);
 
         if is_list_only_heuristic(heuristic) {
@@ -267,7 +276,7 @@ where
             return;
         }
 
-        if is_standard_only_heuristic(heuristic) {
+        if should_use_descriptor_standard_path(heuristic, has_matching_scalar, has_matching_list) {
             assert!(
                 !explicit_target || has_matching_scalar,
                 "standard construction heuristic {:?} does not match targeted standard planning variables for entity_class={:?} variable_name={:?}",
@@ -322,6 +331,57 @@ fn finalize_noop_construction<S, D, ProgressCb>(
     solver_scope.update_best_solution();
     if had_best {
         solver_scope.promote_current_solution_on_score_tie();
+    }
+}
+
+#[cfg(test)]
+mod construction_routing_tests {
+    use super::should_use_descriptor_standard_path;
+    use solverforge_config::ConstructionHeuristicType;
+
+    #[test]
+    fn pure_scalar_first_fit_uses_descriptor_standard_path() {
+        assert!(should_use_descriptor_standard_path(
+            ConstructionHeuristicType::FirstFit,
+            true,
+            false,
+        ));
+    }
+
+    #[test]
+    fn pure_scalar_cheapest_insertion_uses_descriptor_standard_path() {
+        assert!(should_use_descriptor_standard_path(
+            ConstructionHeuristicType::CheapestInsertion,
+            true,
+            false,
+        ));
+    }
+
+    #[test]
+    fn mixed_first_fit_keeps_generic_construction_path() {
+        assert!(!should_use_descriptor_standard_path(
+            ConstructionHeuristicType::FirstFit,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn mixed_cheapest_insertion_keeps_generic_construction_path() {
+        assert!(!should_use_descriptor_standard_path(
+            ConstructionHeuristicType::CheapestInsertion,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn standard_only_heuristics_still_route_to_descriptor_path() {
+        assert!(should_use_descriptor_standard_path(
+            ConstructionHeuristicType::StrongestFit,
+            true,
+            true,
+        ));
     }
 }
 
