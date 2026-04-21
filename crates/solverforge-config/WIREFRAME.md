@@ -3,7 +3,7 @@
 Serde-based configuration system for loading solver settings from TOML or YAML files.
 
 **Location:** `crates/solverforge-config/`
-**Workspace Release:** `0.8.11`
+**Workspace Release:** `0.8.12`
 
 ## Dependencies
 
@@ -156,6 +156,8 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 |-------|------|
 | `accepted_count_limit` | `Option<usize>` |
 | `pick_early_type` | `Option<PickEarlyType>` |
+
+`accepted_count_limit` caps the accepted moves retained for final selection. It does not imply early neighborhood exit; early stop stays controlled by `pick_early_type` and the explicit `First*Improving` local-search foragers.
 
 ### `TabuSearchConfig`
 
@@ -409,13 +411,13 @@ Derives: `Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize`.
 
 | Variant | Note |
 |---------|------|
-| `FirstFit` | **Default.** Generic first-fit construction over scalar-only, list-only, or mixed `ModelContext` targets |
+| `FirstFit` | **Default.** Generic first-fit construction over mixed or list-bearing `ModelContext` targets; pure scalar matches reuse the descriptor-standard scalar path |
 | `FirstFitDecreasing` | Specialized scalar-only first fit by entity difficulty |
 | `WeakestFit` | Specialized scalar-only weakest-fit heuristic |
 | `WeakestFitDecreasing` | Specialized scalar-only weakest-fit-by-difficulty heuristic |
 | `StrongestFit` | Specialized scalar-only strongest-fit heuristic |
 | `StrongestFitDecreasing` | Specialized scalar-only strongest-fit-by-difficulty heuristic |
-| `CheapestInsertion` | Generic best-score construction over scalar-only, list-only, or mixed `ModelContext` targets |
+| `CheapestInsertion` | Generic best-score construction over mixed or list-bearing `ModelContext` targets; pure scalar matches reuse the descriptor-standard scalar path |
 | `AllocateEntityFromQueue` | Specialized scalar-only queue-driven allocation |
 | `AllocateToValueFromQueue` | Specialized scalar-only value-queue allocation |
 | `ListRoundRobin` | Specialized list-only even distribution |

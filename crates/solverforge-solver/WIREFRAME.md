@@ -3,7 +3,7 @@
 Solver engine: phases, moves, selectors, acceptors, foragers, termination, and solver management.
 
 **Location:** `crates/solverforge-solver/`
-**Workspace Release:** `0.8.11`
+**Workspace Release:** `0.8.12`
 
 ## Dependencies
 
@@ -24,7 +24,7 @@ Solver engine: phases, moves, selectors, acceptors, foragers, termination, and s
 src/
 ├── lib.rs                               — Crate root; module declarations, re-exports
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
-├── runtime.rs                           — Runtime assembly and target matching over `ModelContext`; dispatches the canonical construction engine and delegates specialized scalar/list phases
+├── runtime.rs                           — Runtime assembly and target matching over `ModelContext`; routes pure scalar generic construction to the descriptor-standard path, uses the canonical construction engine for mixed/list-bearing targets, and delegates specialized list phases
 ├── list_solver_tests.rs                 — Tests
 ├── descriptor_standard.rs               — Re-exports the explicit descriptor-standard bindings, selectors, move types, and construction helpers
 ├── descriptor_standard/
@@ -640,7 +640,7 @@ Local search foragers:
 
 | Forager | Strategy |
 |---------|----------|
-| `AcceptedCountForager<S>` | Best of N accepted moves |
+| `AcceptedCountForager<S>` | Best of retained accepted moves; no implicit early exit |
 | `FirstAcceptedForager<S>` | First accepted |
 | `BestScoreForager<S>` | Best overall score |
 | `FirstBestScoreImprovingForager<S>` | First improving best |
@@ -823,7 +823,7 @@ formatting edges.
 Runtime helpers:
 
 - `RuntimePhase<C, LS, VND>` — generic runtime phase enum with `Construction`, `LocalSearch`, `Vnd`
-- `Construction<S, V, DM, IDM>` — runtime construction phase over one `ModelContext`; generic `FirstFit` and `CheapestInsertion` dispatch into `phase/construction/engine.rs`, while specialized scalar-only and list-only heuristics delegate to the existing descriptor/list phase implementations
+- `Construction<S, V, DM, IDM>` — runtime construction phase over one `ModelContext`; generic `FirstFit` and `CheapestInsertion` use `phase/construction/engine.rs` when matching list work is present, reuse the descriptor-standard scalar path for pure scalar matches, and delegate specialized scalar-only and list-only heuristics to the existing descriptor/list phase implementations
 - `ListVariableMetadata<S, DM, IDM>` — list-variable metadata surfaced to macro-generated runtime code
 - `ListVariableEntity<S>` — list-variable accessors plus `HAS_LIST_VARIABLE`, `LIST_VARIABLE_NAME`, and `LIST_ELEMENT_SOURCE`
 - `build_phases()` — builds the runtime phase sequence from `SolverConfig`, `SolutionDescriptor`, and one `ModelContext`
