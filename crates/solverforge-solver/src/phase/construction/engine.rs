@@ -19,19 +19,23 @@ use super::evaluation::evaluate_trial_move;
 use super::ConstructionListElementId;
 use super::ConstructionSlotId;
 
-enum Candidate<S, V, DM, IDM>
+enum Candidate<S, V>
 where
     S: PlanningSolution,
 {
     Scalar {
-        ctx: ScalarVariableContext<S>,
+        getter: fn(&S, usize) -> Option<usize>,
+        setter: fn(&mut S, usize, Option<usize>),
+        variable_name: &'static str,
+        descriptor_index: usize,
         entity_index: usize,
         value: usize,
         order_key: [usize; 4],
         score: S::Score,
     },
     List {
-        ctx: ListVariableContext<S, V, DM, IDM>,
+        list_insert: fn(&mut S, usize, usize, V),
+        descriptor_index: usize,
         element: V,
         entity_index: usize,
         position: usize,
@@ -40,7 +44,7 @@ where
     },
 }
 
-impl<S, V, DM, IDM> Candidate<S, V, DM, IDM>
+impl<S, V> Candidate<S, V>
 where
     S: PlanningSolution,
 {
@@ -57,13 +61,13 @@ where
     }
 }
 
-enum IterationProgress<S, V, DM, IDM>
+enum IterationProgress<S, V>
 where
     S: PlanningSolution,
 {
     None,
     CompletedOnly,
-    Committed(Candidate<S, V, DM, IDM>),
+    Committed(Candidate<S, V>),
 }
 
 pub(crate) fn solve_construction<S, V, DM, IDM, D, ProgressCb>(
@@ -150,7 +154,7 @@ fn solve_first_fit_iteration<S, V, DM, IDM, D, ProgressCb>(
     phase_scope: &mut PhaseScope<'_, '_, S, D, ProgressCb>,
     entity_class: Option<&str>,
     variable_name: Option<&str>,
-) -> IterationProgress<S, V, DM, IDM>
+) -> IterationProgress<S, V>
 where
     S: PlanningSolution,
     S::Score: Score + Copy,
@@ -197,7 +201,7 @@ fn solve_best_fit_iteration<S, V, DM, IDM, D, ProgressCb>(
     phase_scope: &mut PhaseScope<'_, '_, S, D, ProgressCb>,
     entity_class: Option<&str>,
     variable_name: Option<&str>,
-) -> IterationProgress<S, V, DM, IDM>
+) -> IterationProgress<S, V>
 where
     S: PlanningSolution,
     S::Score: Score + Copy,
@@ -207,7 +211,7 @@ where
     D: Director<S>,
     ProgressCb: ProgressCallback<S>,
 {
-    let mut best_candidate: Option<Candidate<S, V, DM, IDM>> = None;
+    let mut best_candidate: Option<Candidate<S, V>> = None;
     let mut completed_only = false;
 
     for (variable_index, variable) in model.variables().iter().enumerate() {
@@ -240,11 +244,11 @@ where
     }
 }
 
-fn solve_scalar_first_fit<S, V, DM, IDM, D, ProgressCb>(
+fn solve_scalar_first_fit<S, V, D, ProgressCb>(
     variable_index: usize,
     ctx: ScalarVariableContext<S>,
     phase_scope: &mut PhaseScope<'_, '_, S, D, ProgressCb>,
-) -> IterationProgress<S, V, DM, IDM>
+) -> IterationProgress<S, V>
 where
     S: PlanningSolution,
     S::Score: Score + Copy,
@@ -326,7 +330,10 @@ where
                     unreachable!("selected scalar construction candidate should exist");
                 };
                 return IterationProgress::Committed(Candidate::Scalar {
-                    ctx,
+                    getter: ctx.getter,
+                    setter: ctx.setter,
+                    variable_name: ctx.variable_name,
+                    descriptor_index: ctx.descriptor_index,
                     entity_index,
                     value,
                     order_key: [variable_index, entity_index, value_index, 0],
@@ -350,7 +357,7 @@ fn solve_list_first_fit<S, V, DM, IDM, D, ProgressCb>(
     list_index: usize,
     ctx: ListVariableContext<S, V, DM, IDM>,
     phase_scope: &mut PhaseScope<'_, '_, S, D, ProgressCb>,
-) -> IterationProgress<S, V, DM, IDM>
+) -> IterationProgress<S, V>
 where
     S: PlanningSolution,
     S::Score: Score + Copy,
@@ -386,34 +393,28 @@ where
             continue;
         }
 
-        for entity_index in 0..entity_count {
-            let len = (ctx.list_len)(
-                phase_scope.score_director().working_solution(),
-                entity_index,
-            );
-            for position in 0..=len {
-                let score =
-                    evaluate_list_insertion(phase_scope, &ctx, element, entity_index, position);
-                return IterationProgress::Committed(Candidate::List {
-                    ctx,
-                    element,
-                    entity_index,
-                    position,
-                    order_key: [list_index, element_index, entity_index, position],
-                    score,
-                });
-            }
-        }
+        let entity_index = 0;
+        let position = 0;
+        let score = evaluate_list_insertion(phase_scope, &ctx, element, entity_index, position);
+        return IterationProgress::Committed(Candidate::List {
+            list_insert: ctx.list_insert,
+            descriptor_index: ctx.descriptor_index,
+            element,
+            entity_index,
+            position,
+            order_key: [list_index, element_index, entity_index, position],
+            score,
+        });
     }
 
     IterationProgress::None
 }
 
-fn scan_scalar_best_fit<S, V, DM, IDM, D, ProgressCb>(
+fn scan_scalar_best_fit<S, V, D, ProgressCb>(
     variable_index: usize,
     ctx: ScalarVariableContext<S>,
     phase_scope: &mut PhaseScope<'_, '_, S, D, ProgressCb>,
-) -> IterationProgress<S, V, DM, IDM>
+) -> IterationProgress<S, V>
 where
     S: PlanningSolution,
     S::Score: Score + Copy,
@@ -491,7 +492,10 @@ where
                 Some((value_index, value, score)),
             ) => {
                 return IterationProgress::Committed(Candidate::Scalar {
-                    ctx,
+                    getter: ctx.getter,
+                    setter: ctx.setter,
+                    variable_name: ctx.variable_name,
+                    descriptor_index: ctx.descriptor_index,
                     entity_index,
                     value,
                     order_key: [variable_index, entity_index, value_index, 0],
@@ -512,7 +516,7 @@ fn scan_list_best_fit<S, V, DM, IDM, D, ProgressCb>(
     list_index: usize,
     ctx: ListVariableContext<S, V, DM, IDM>,
     phase_scope: &mut PhaseScope<'_, '_, S, D, ProgressCb>,
-) -> IterationProgress<S, V, DM, IDM>
+) -> IterationProgress<S, V>
 where
     S: PlanningSolution,
     S::Score: Score + Copy,
@@ -530,7 +534,7 @@ where
     let assigned = (ctx.assigned_elements)(phase_scope.score_director().working_solution());
     let assigned_set: std::collections::HashSet<V> = assigned.into_iter().collect();
     let element_count = (ctx.element_count)(phase_scope.score_director().working_solution());
-    let mut best_candidate: Option<Candidate<S, V, DM, IDM>> = None;
+    let mut best_candidate: Option<Candidate<S, V>> = None;
 
     for element_index in 0..element_count {
         let element_id = ConstructionListElementId::new(list_index, element_index);
@@ -572,7 +576,8 @@ where
             update_best_candidate(
                 &mut best_candidate,
                 Candidate::List {
-                    ctx: ctx.clone(),
+                    list_insert: ctx.list_insert,
+                    descriptor_index: ctx.descriptor_index,
                     element,
                     entity_index,
                     position,
@@ -592,21 +597,22 @@ where
         .unwrap_or(IterationProgress::None)
 }
 
-fn commit_candidate<S, V, DM, IDM, D, ProgressCb>(
-    candidate: Candidate<S, V, DM, IDM>,
+fn commit_candidate<S, V, D, ProgressCb>(
+    candidate: Candidate<S, V>,
     phase_scope: &mut PhaseScope<'_, '_, S, D, ProgressCb>,
 ) where
     S: PlanningSolution,
     S::Score: Score + Copy,
     V: Clone + Copy + PartialEq + Eq + Hash + Send + Sync + Debug + 'static,
-    DM: Clone + Debug + 'static,
-    IDM: Clone + Debug + 'static,
     D: Director<S>,
     ProgressCb: ProgressCallback<S>,
 {
     match candidate {
         Candidate::Scalar {
-            ctx,
+            getter,
+            setter,
+            variable_name,
+            descriptor_index,
             entity_index,
             value,
             ..
@@ -614,10 +620,10 @@ fn commit_candidate<S, V, DM, IDM, D, ProgressCb>(
             let mov = ChangeMove::new(
                 entity_index,
                 Some(value),
-                ctx.getter,
-                ctx.setter,
-                ctx.variable_name,
-                ctx.descriptor_index,
+                getter,
+                setter,
+                variable_name,
+                descriptor_index,
             );
             let mut step_scope = StepScope::new(phase_scope);
             step_scope.phase_scope_mut().record_move_accepted();
@@ -627,7 +633,8 @@ fn commit_candidate<S, V, DM, IDM, D, ProgressCb>(
             step_scope.complete();
         }
         Candidate::List {
-            ctx,
+            list_insert,
+            descriptor_index,
             element,
             entity_index,
             position,
@@ -636,14 +643,14 @@ fn commit_candidate<S, V, DM, IDM, D, ProgressCb>(
             let mut step_scope = StepScope::new(phase_scope);
             step_scope.phase_scope_mut().record_move_accepted();
             step_scope.apply_committed_change(|score_director| {
-                score_director.before_variable_changed(ctx.descriptor_index, entity_index);
-                (ctx.list_insert)(
+                score_director.before_variable_changed(descriptor_index, entity_index);
+                list_insert(
                     score_director.working_solution_mut(),
                     entity_index,
                     position,
                     element,
                 );
-                score_director.after_variable_changed(ctx.descriptor_index, entity_index);
+                score_director.after_variable_changed(descriptor_index, entity_index);
             });
             let step_score = step_scope.calculate_score();
             step_scope.set_step_score(step_score);
@@ -748,10 +755,8 @@ fn matches_target<S, V, DM, IDM>(
     }
 }
 
-fn update_best_candidate<S, V, DM, IDM>(
-    slot: &mut Option<Candidate<S, V, DM, IDM>>,
-    candidate: Candidate<S, V, DM, IDM>,
-) where
+fn update_best_candidate<S, V>(slot: &mut Option<Candidate<S, V>>, candidate: Candidate<S, V>)
+where
     S: PlanningSolution,
 {
     let should_replace = match slot {
