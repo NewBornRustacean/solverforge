@@ -845,7 +845,6 @@ Canonical solve entrypoints used by macro-generated solving. They accept generat
 - **Typed runtime selectors.** `builder/selector.rs` consumes the typed `ModelContext` published by macro/runtime assembly and does not synthesize scalar neighborhoods from descriptor bindings.
 - **Explicit descriptor-standard boundary.** Descriptor-driven scalar construction and selector assembly live under `descriptor_standard/*` and are used only by callers that intentionally choose that engine.
 - **Function pointer storage.** Moves and selectors store `fn` pointers (e.g., `fn(&S, usize) -> Option<V>`) instead of trait objects for solution access.
-- **Neutral selector naming.** Public selector modules and types use `move_selector.rs`, `value_selector.rs`, `MoveSelector`, and `ValueSelector`. The trait method `iter_typed(...)` remains for now even though the public type names are prefix-free.
 - **PhantomData<fn() -> T>** pattern used in all move types to avoid inheriting Clone/Send/Sync bounds from phantom type parameters.
 - **SmallVec<[usize; 8]>** used in RuinMove and ListRuinMove for stack-allocated small ruin counts.
 - **Tuple-based composition.** Phases, terminations, and VND neighborhoods compose via nested tuples with macro-generated impls, avoiding `Vec<Box<dyn Phase>>`.

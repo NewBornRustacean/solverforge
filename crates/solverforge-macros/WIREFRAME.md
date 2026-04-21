@@ -68,7 +68,7 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
 
 **Consumed attributes on fields:**
 - `#[planning_entity_collection]` — `Vec<Entity>` field containing planning entities
-- `#[planning_list_element_collection(owner = "field")]` — legacy `Vec<usize>` field containing all elements for the named list owner; optional when the solution has a matching `#[planning_entity_collection]` or `#[problem_fact_collection]` field whose name matches the entity list variable's `element_collection`
+- `#[planning_list_element_collection(owner = "field")]` — `Vec<usize>` field containing all elements for the named list owner; optional when the solution has a matching `#[planning_entity_collection]` or `#[problem_fact_collection]` field whose name matches the entity list variable's `element_collection`
 - `#[problem_fact_collection]` — `Vec<Fact>` field containing problem facts
 - `#[planning_score]` — `Option<Score>` field (required)
 - `#[value_range_provider]` — value range source
