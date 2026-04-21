@@ -1166,7 +1166,7 @@ fn solve_multi_owner_construction_with_solution(
 }
 
 #[test]
-fn unified_list_target_matches_entity_class_only() {
+fn list_target_matches_entity_class_only() {
     let solution = solve_multi_owner_construction(config(
         ConstructionHeuristicType::FirstFit,
         Some("Route"),
@@ -1178,7 +1178,7 @@ fn unified_list_target_matches_entity_class_only() {
 }
 
 #[test]
-fn unified_list_target_matches_variable_name_across_all_owners() {
+fn list_target_matches_variable_name_across_all_owners() {
     let solution = solve_multi_owner_construction(config(
         ConstructionHeuristicType::FirstFit,
         None,
@@ -1190,7 +1190,7 @@ fn unified_list_target_matches_variable_name_across_all_owners() {
 }
 
 #[test]
-fn unified_target_panics_when_no_variable_matches() {
+fn construction_target_panics_when_no_variable_matches() {
     let panic = std::panic::catch_unwind(|| {
         let _ = solve_multi_owner_construction(config(
             ConstructionHeuristicType::FirstFit,
@@ -1636,7 +1636,7 @@ fn solve_mixed_target_construction(
 }
 
 #[test]
-fn unified_entity_class_target_matches_scalar_and_list_in_same_owner() {
+fn entity_class_target_matches_scalar_and_list_in_same_owner() {
     let solution = solve_mixed_target_construction(
         ConstructionHeuristicType::FirstFit,
         Some("Route"),
