@@ -9,10 +9,11 @@ use rand::SeedableRng;
 use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::{Director, RecordingDirector};
 
-use crate::descriptor_standard::ConstructionFrontier;
 use crate::heuristic::r#move::Move;
 use crate::manager::{SolverLifecycleState, SolverRuntime, SolverTerminalReason};
-use crate::phase::construction::{ConstructionListElementId, ConstructionSlotId};
+use crate::phase::construction::{
+    ConstructionFrontier, ConstructionListElementId, ConstructionSlotId,
+};
 use crate::stats::SolverStats;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,12 +286,12 @@ impl<'t, S: PlanningSolution, D: Director<S>, ProgressCb: ProgressCallback<S>>
 
     pub(crate) fn is_standard_slot_completed(&self, slot_id: ConstructionSlotId) -> bool {
         self.construction_frontier
-            .is_completed(slot_id, self.solution_revision)
+            .is_standard_completed(slot_id, self.solution_revision)
     }
 
     pub(crate) fn mark_standard_slot_completed(&mut self, slot_id: ConstructionSlotId) {
         self.construction_frontier
-            .mark_completed(slot_id, self.solution_revision);
+            .mark_standard_completed(slot_id, self.solution_revision);
     }
 
     pub(crate) fn is_list_element_completed(&self, element_id: ConstructionListElementId) -> bool {

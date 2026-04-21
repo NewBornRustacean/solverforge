@@ -24,12 +24,11 @@ Solver engine: phases, moves, selectors, acceptors, foragers, termination, and s
 src/
 ├── lib.rs                               — Crate root; module declarations, re-exports
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
-├── runtime.rs                           — Runtime assembly and target matching over `ModelContext`; dispatches unified generic construction and delegates specialized scalar/list phases
+├── runtime.rs                           — Runtime assembly and target matching over `ModelContext`; dispatches the canonical construction engine and delegates specialized scalar/list phases
 ├── list_solver_tests.rs                 — Tests
 ├── descriptor_standard.rs               — Re-exports the explicit descriptor-standard bindings, selectors, move types, and construction helpers
 ├── descriptor_standard/
 │   ├── bindings.rs                      — Standard-variable binding discovery, matching, and frontier-aware work checks
-│   ├── frontier.rs                      — Compatibility re-export to the shared construction frontier
 │   ├── move_types.rs                    — DescriptorChangeMove<S>, DescriptorSwapMove<S>, DescriptorEitherMove<S>
 │   ├── selectors.rs                     — DescriptorChangeMoveSelector<S>, DescriptorSwapMoveSelector<S>, DescriptorLeafSelector<S>, build_descriptor_move_selector(); optional assigned variables can emit one `Some(v) -> None` change
 │   ├── construction.rs                  — DescriptorConstruction<S>, DescriptorEntityPlacer<S>, build_descriptor_construction(); descriptor placements carry optional keep-current legality and slot identity
@@ -166,8 +165,8 @@ src/
 │   │   ├── phase.rs                     — ConstructionHeuristicPhase<S, M, P, Fo>
 │   │   ├── forager.rs                   — ConstructionChoice enum, ConstructionForager trait, FirstFit/BestFit/FirstFeasible/WeakestFit/StrongestFit foragers
 │   │   ├── placer.rs                    — EntityPlacer trait, Placement, QueuedEntityPlacer, SortedEntityPlacer; queued placements expose optional keep-current legality
-│   │   ├── slot.rs                      — ConstructionSlotId and ConstructionListElementId for unified frontier tracking
-│   │   ├── unified.rs                   — Canonical generic scalar/list/mixed construction engine used by runtime assembly
+│   │   ├── slot.rs                      — ConstructionSlotId and ConstructionListElementId for construction frontier tracking
+│   │   ├── engine.rs                    — Canonical generic scalar/list/mixed construction engine used by runtime assembly
 │   │   ├── phase_tests.rs              — Tests
 │   │   ├── forager_tests.rs            — Tests
 │   │   └── placer_tests.rs             — Tests
@@ -824,7 +823,7 @@ formatting edges.
 Runtime helpers:
 
 - `RuntimePhase<C, LS, VND>` — generic runtime phase enum with `Construction`, `LocalSearch`, `Vnd`
-- `Construction<S, V, DM, IDM>` — runtime construction phase over one `ModelContext`; generic `FirstFit` and `CheapestInsertion` dispatch into `phase/construction/unified.rs`, while specialized scalar-only and list-only heuristics delegate to the existing descriptor/list phase implementations
+- `Construction<S, V, DM, IDM>` — runtime construction phase over one `ModelContext`; generic `FirstFit` and `CheapestInsertion` dispatch into `phase/construction/engine.rs`, while specialized scalar-only and list-only heuristics delegate to the existing descriptor/list phase implementations
 - `ListVariableMetadata<S, DM, IDM>` — list-variable metadata surfaced to macro-generated runtime code
 - `ListVariableEntity<S>` — list-variable accessors plus `HAS_LIST_VARIABLE`, `LIST_VARIABLE_NAME`, and `LIST_ELEMENT_SOURCE`
 - `build_phases()` — builds the runtime phase sequence from `SolverConfig`, `SolutionDescriptor`, and one `ModelContext`

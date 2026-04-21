@@ -6,9 +6,7 @@ use solverforge_core::domain::{
     ValueRangeType,
 };
 
-use crate::phase::construction::ConstructionSlotId;
-
-use super::ConstructionFrontier;
+use crate::phase::construction::{ConstructionFrontier, ConstructionSlotId};
 
 #[derive(Clone)]
 pub(crate) struct VariableBinding {
@@ -150,7 +148,7 @@ where
                 .get_entity(solution as &dyn Any, binding.descriptor_index, entity_index)
                 .expect("entity lookup failed while checking standard work");
             if (binding.getter)(entity).is_some()
-                || frontier.is_completed(binding.slot_id(entity_index), solution_revision)
+                || frontier.is_standard_completed(binding.slot_id(entity_index), solution_revision)
             {
                 continue;
             }

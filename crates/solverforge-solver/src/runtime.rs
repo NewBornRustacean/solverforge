@@ -299,11 +299,8 @@ where
             return;
         }
 
-        let ran_child_phase = crate::phase::construction::solve_unified_construction(
-            config,
-            &self.model,
-            solver_scope,
-        );
+        let ran_child_phase =
+            crate::phase::construction::solve_construction(config, &self.model, solver_scope);
         if !ran_child_phase {
             finalize_noop_construction(solver_scope);
         }

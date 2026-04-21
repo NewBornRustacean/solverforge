@@ -64,7 +64,7 @@ where
     Committed(Candidate<S, V, DM, IDM>),
 }
 
-pub(crate) fn solve_unified_construction<S, V, DM, IDM, D, ProgressCb>(
+pub(crate) fn solve_construction<S, V, DM, IDM, D, ProgressCb>(
     config: Option<&ConstructionHeuristicConfig>,
     model: &ModelContext<S, V, DM, IDM>,
     solver_scope: &mut SolverScope<'_, S, D, ProgressCb>,

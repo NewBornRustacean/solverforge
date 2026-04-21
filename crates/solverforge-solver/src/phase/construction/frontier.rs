@@ -60,14 +60,6 @@ impl ConstructionFrontier {
         *element = solution_revision;
     }
 
-    pub(crate) fn is_completed(&self, slot_id: ConstructionSlotId, solution_revision: u64) -> bool {
-        self.is_standard_completed(slot_id, solution_revision)
-    }
-
-    pub(crate) fn mark_completed(&mut self, slot_id: ConstructionSlotId, solution_revision: u64) {
-        self.mark_standard_completed(slot_id, solution_revision);
-    }
-
     fn ensure_standard_slot(&mut self, slot_id: ConstructionSlotId) -> &mut u64 {
         if self.standard_completed_at_revision.len() <= slot_id.binding_index() {
             self.standard_completed_at_revision

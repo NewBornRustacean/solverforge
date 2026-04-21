@@ -22,7 +22,7 @@ src/
 ├── planning_entity.rs      — PlanningEntityImpl derive module root
 ├── planning_entity/*.rs    — Entity derive expansion, list-variable helpers, and tests
 ├── planning_solution.rs    — PlanningSolutionImpl derive module root
-├── planning_solution/*.rs  — Solution derive expansion, unified runtime/shadow helpers, list operations, and tests
+├── planning_solution/*.rs  — Solution derive expansion, runtime/shadow helpers, list operations, and tests
 └── problem_fact.rs         — ProblemFactImpl derive: ProblemFact, PlanningId, problem_fact_descriptor()
 ```
 
