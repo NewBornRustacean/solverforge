@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -13,6 +12,7 @@ use crate::builder::{
 use crate::heuristic::r#move::{ChangeMove, Move};
 use crate::scope::{PhaseScope, ProgressCallback, SolverScope, StepScope};
 
+use super::decision::{select_best_fit, select_first_fit, ScoredChoiceTracker};
 use super::evaluation::evaluate_trial_move;
 use super::ConstructionListElementId;
 use super::ConstructionSlotId;
@@ -281,6 +281,8 @@ where
             continue;
         }
 
+        let mut first_doable = None;
+
         for (value_index, value) in values.into_iter().enumerate() {
             let mov = ChangeMove::new(
                 entity_index,
@@ -292,6 +294,16 @@ where
             );
             if mov.is_doable(phase_scope.score_director()) {
                 let score = candidate_score(phase_scope, &mov);
+                first_doable = Some((value_index, value, score));
+                break;
+            }
+        }
+
+        if let Some((value_index, value, score)) = first_doable {
+            if matches!(
+                select_first_fit(Some(value_index)),
+                crate::phase::construction::ConstructionChoice::Select(_)
+            ) {
                 return IterationProgress::Committed(Candidate::Scalar {
                     ctx,
                     entity_index,
@@ -418,6 +430,7 @@ where
         }
 
         let baseline_score = ctx.allows_unassigned.then(|| phase_scope.calculate_score());
+        let mut tracker = ScoredChoiceTracker::default();
         let mut best: Option<(usize, usize, S::Score)> = None;
 
         for (value_index, value) in values.into_iter().enumerate() {
@@ -433,6 +446,7 @@ where
                 continue;
             }
             let score = candidate_score(phase_scope, &mov);
+            tracker.consider(value_index, score);
             let should_replace = match best {
                 None => true,
                 Some((_, _, best_score)) => score > best_score,
@@ -442,14 +456,14 @@ where
             }
         }
 
-        match (baseline_score, best) {
+        match (select_best_fit(tracker, baseline_score), best) {
             (_, None) => {
                 if ctx.allows_unassigned {
                     complete_scalar_slot(slot_id, phase_scope);
                     return IterationProgress::CompletedOnly;
                 }
             }
-            (None, Some((value_index, value, score))) => {
+            (crate::phase::construction::ConstructionChoice::Select(_), Some((value_index, value, score))) => {
                 return IterationProgress::Committed(Candidate::Scalar {
                     ctx,
                     entity_index,
@@ -458,21 +472,10 @@ where
                     score,
                 });
             }
-            (Some(baseline), Some((value_index, value, score))) => match baseline.cmp(&score) {
-                Ordering::Greater => {
-                    complete_scalar_slot(slot_id, phase_scope);
-                    return IterationProgress::CompletedOnly;
-                }
-                Ordering::Less | Ordering::Equal => {
-                    return IterationProgress::Committed(Candidate::Scalar {
-                        ctx,
-                        entity_index,
-                        value,
-                        order_key: [variable_index, entity_index, value_index, 0],
-                        score,
-                    });
-                }
-            },
+            (crate::phase::construction::ConstructionChoice::KeepCurrent, Some(_)) => {
+                complete_scalar_slot(slot_id, phase_scope);
+                return IterationProgress::CompletedOnly;
+            }
         }
     }
 

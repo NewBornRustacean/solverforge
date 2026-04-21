@@ -19,8 +19,7 @@ use solverforge_scoring::Director;
 use crate::heuristic::r#move::Move;
 
 use super::decision::{
-    resolve_scored_choice, select_first_doable, should_keep_current_immediately, BaselinePolicy,
-    EqualScorePolicy, ScoredChoiceTracker,
+    select_best_fit, select_first_feasible, select_first_fit, ScoredChoiceTracker,
 };
 use super::evaluation::evaluate_trial_move;
 use super::Placement;
@@ -109,7 +108,7 @@ where
             }
         }
 
-        select_first_doable(first_doable)
+        select_first_fit(first_doable)
     }
 }
 
@@ -175,12 +174,7 @@ where
             tracker.consider(idx, score);
         }
 
-        resolve_scored_choice(
-            tracker,
-            baseline_score,
-            BaselinePolicy::KeepOnlyIfStrictlyBetterThanAllMoves,
-            EqualScorePolicy::PreferMove,
-        )
+        select_best_fit(tracker, baseline_score)
     }
 }
 
@@ -234,11 +228,8 @@ where
             .keep_current_legal()
             .then(|| score_director.calculate_score());
 
-        if should_keep_current_immediately(baseline_score, BaselinePolicy::KeepIfAlreadyFeasible) {
-            return ConstructionChoice::KeepCurrent;
-        }
-
         let mut fallback_tracker = ScoredChoiceTracker::default();
+        let mut first_feasible = None;
 
         for (idx, m) in placement.moves.iter().enumerate() {
             if !m.is_doable(score_director) {
@@ -248,18 +239,14 @@ where
             let score = evaluate_trial_move(score_director, m);
 
             if score.is_feasible() {
-                return ConstructionChoice::Select(idx);
+                first_feasible = Some(idx);
+                break;
             }
 
             fallback_tracker.consider(idx, score);
         }
 
-        resolve_scored_choice(
-            fallback_tracker,
-            baseline_score,
-            BaselinePolicy::KeepOnlyIfStrictlyBetterThanAllMoves,
-            EqualScorePolicy::PreferMove,
-        )
+        select_first_feasible(first_feasible, fallback_tracker, baseline_score)
     }
 }
 

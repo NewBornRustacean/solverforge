@@ -54,10 +54,49 @@ where
     }
 }
 
-pub(crate) fn select_first_doable(first_doable_idx: Option<usize>) -> ConstructionChoice {
+pub(crate) fn select_first_fit(first_doable_idx: Option<usize>) -> ConstructionChoice {
     first_doable_idx
         .map(ConstructionChoice::Select)
         .unwrap_or(ConstructionChoice::KeepCurrent)
+}
+
+pub(crate) fn select_best_fit<ScoreT>(
+    tracker: ScoredChoiceTracker<ScoreT>,
+    baseline_score: Option<ScoreT>,
+) -> ConstructionChoice
+where
+    ScoreT: Score,
+{
+    resolve_scored_choice(
+        tracker,
+        baseline_score,
+        BaselinePolicy::KeepOnlyIfStrictlyBetterThanAllMoves,
+        EqualScorePolicy::PreferMove,
+    )
+}
+
+pub(crate) fn select_first_feasible<ScoreT>(
+    first_feasible_idx: Option<usize>,
+    fallback_tracker: ScoredChoiceTracker<ScoreT>,
+    baseline_score: Option<ScoreT>,
+) -> ConstructionChoice
+where
+    ScoreT: Score,
+{
+    if should_keep_current_immediately(baseline_score, BaselinePolicy::KeepIfAlreadyFeasible) {
+        return ConstructionChoice::KeepCurrent;
+    }
+
+    if let Some(idx) = first_feasible_idx {
+        return ConstructionChoice::Select(idx);
+    }
+
+    resolve_scored_choice(
+        fallback_tracker,
+        baseline_score,
+        BaselinePolicy::KeepOnlyIfStrictlyBetterThanAllMoves,
+        EqualScorePolicy::PreferMove,
+    )
 }
 
 pub(crate) fn should_keep_current_immediately<ScoreT>(

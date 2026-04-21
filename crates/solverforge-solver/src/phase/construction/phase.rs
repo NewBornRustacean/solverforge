@@ -12,8 +12,7 @@ use tracing::info;
 
 use crate::heuristic::r#move::Move;
 use crate::phase::construction::decision::{
-    resolve_scored_choice, select_first_doable, should_keep_current_immediately, BaselinePolicy,
-    EqualScorePolicy, ScoredChoiceTracker,
+    select_best_fit, select_first_feasible, select_first_fit, ScoredChoiceTracker,
 };
 use crate::phase::construction::evaluation::evaluate_trial_move;
 use crate::phase::construction::{
@@ -310,7 +309,7 @@ where
             .record_evaluated_move(evaluation_started.elapsed());
     }
 
-    ConstructionSelection::Selected(select_first_doable(first_doable))
+    ConstructionSelection::Selected(select_first_fit(first_doable))
 }
 
 fn select_best_fit_index<S, D, BestCb, M>(
@@ -350,12 +349,7 @@ where
         tracker.consider(idx, score);
     }
 
-    ConstructionSelection::Selected(resolve_scored_choice(
-        tracker,
-        baseline_score,
-        BaselinePolicy::KeepOnlyIfStrictlyBetterThanAllMoves,
-        EqualScorePolicy::PreferMove,
-    ))
+    ConstructionSelection::Selected(select_best_fit(tracker, baseline_score))
 }
 
 fn select_first_feasible_index<S, D, BestCb, M>(
@@ -373,11 +367,8 @@ where
         .keep_current_legal()
         .then(|| step_scope.calculate_score());
 
-    if should_keep_current_immediately(baseline_score, BaselinePolicy::KeepIfAlreadyFeasible) {
-        return ConstructionSelection::Selected(ConstructionChoice::KeepCurrent);
-    }
-
     let mut fallback_tracker = ScoredChoiceTracker::default();
+    let mut first_feasible = None;
 
     for (idx, m) in placement.moves.iter().enumerate() {
         let evaluation_started = Instant::now();
@@ -398,17 +389,17 @@ where
             .record_evaluated_move(evaluation_started.elapsed());
 
         if score.is_feasible() {
-            return ConstructionSelection::Selected(ConstructionChoice::Select(idx));
+            first_feasible = Some(idx);
+            break;
         }
 
         fallback_tracker.consider(idx, score);
     }
 
-    ConstructionSelection::Selected(resolve_scored_choice(
+    ConstructionSelection::Selected(select_first_feasible(
+        first_feasible,
         fallback_tracker,
         baseline_score,
-        BaselinePolicy::KeepOnlyIfStrictlyBetterThanAllMoves,
-        EqualScorePolicy::PreferMove,
     ))
 }
 
