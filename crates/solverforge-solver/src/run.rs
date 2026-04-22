@@ -169,20 +169,30 @@ pub fn log_solve_start(
     entity_count: usize,
     element_count: Option<usize>,
     has_standard: Option<bool>,
-    variable_count: Option<usize>,
+    candidate_count: Option<usize>,
 ) {
-    info!(
-        event = "solve_start",
-        entity_count = entity_count,
-        value_count = element_count.or(variable_count).unwrap_or(0),
-        solve_shape = if element_count.is_some() {
-            "list"
-        } else if has_standard.unwrap_or(false) {
-            "standard"
-        } else {
-            "solution"
-        },
-    );
+    if let Some(element_count) = element_count {
+        info!(
+            event = "solve_start",
+            entity_count = entity_count,
+            element_count = element_count,
+            solve_shape = "list",
+        );
+    } else if has_standard.unwrap_or(candidate_count.is_some()) {
+        info!(
+            event = "solve_start",
+            entity_count = entity_count,
+            candidate_count = candidate_count.unwrap_or(0),
+            solve_shape = "standard",
+        );
+    } else {
+        info!(
+            event = "solve_start",
+            entity_count = entity_count,
+            value_count = candidate_count.unwrap_or(0),
+            solve_shape = "solution",
+        );
+    }
 }
 
 fn load_solver_config_from(path: impl AsRef<Path>) -> SolverConfig {

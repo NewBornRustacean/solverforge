@@ -106,7 +106,7 @@ fn format_event_renders_solve_start_and_end_summaries() {
             event = "solve_start",
             entity_count = 120u64,
             solve_shape = "list",
-            value_count = 25u64,
+            element_count = 25u64,
             constraint_count = 7u64,
             time_limit_secs = 30u64,
         );
@@ -122,6 +122,24 @@ fn format_event_renders_solve_start_and_end_summaries() {
     assert!(start_output.contains("120"));
     assert!(start_output.contains("25"));
     assert!(start_output.contains("constraints"));
+
+    let outputs = capture_events(|| {
+        tracing::info!(
+            target: "solverforge_solver::test",
+            event = "solve_start",
+            entity_count = 688u64,
+            solve_shape = "standard",
+            candidate_count = 50u64,
+        );
+    });
+    let start_output = outputs
+        .iter()
+        .find(|output| output.contains("Solving"))
+        .cloned()
+        .expect("expected standard solve_start output");
+    assert!(start_output.contains("candidates"));
+    assert!(start_output.contains("688"));
+    assert!(start_output.contains("50"));
 
     let end = EventVisitor {
         event: Some("solve_end".to_string()),

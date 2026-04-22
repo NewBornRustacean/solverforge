@@ -63,10 +63,10 @@ fn format_solve_start(v: &EventVisitor) -> String {
     mark_solve_start();
     let entities = v.entity_count.unwrap_or(0);
     let values = v.value_count.unwrap_or(0);
-    let value_label = if v.solve_shape.as_deref() == Some("list") {
-        "elements"
-    } else {
-        "values"
+    let value_label = match v.solve_shape.as_deref() {
+        Some("list") => "elements",
+        Some("standard") => "candidates",
+        _ => "values",
     };
     let constraints = v.constraint_count.unwrap_or(0);
     let time_limit = v.time_limit_secs.unwrap_or(0);

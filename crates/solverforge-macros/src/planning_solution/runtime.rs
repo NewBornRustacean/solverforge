@@ -277,6 +277,84 @@ fn generate_scalar_runtime_setup(
     }
 }
 
+fn generate_standard_candidate_count_helper(
+    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+    solution_name: &Ident,
+) -> TokenStream {
+    let entity_fields: Vec<_> = fields
+        .iter()
+        .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
+        .filter_map(|field| {
+            let field_name = field.ident.as_ref()?;
+            let field_type = extract_collection_inner_type(&field.ty)?;
+            let syn::Type::Path(type_path) = field_type else {
+                return None;
+            };
+            let type_name = type_path.path.segments.last()?.ident.to_string();
+            let metadata = lookup_standard_entity_metadata(&type_name)?;
+            if metadata.variables.is_empty() {
+                return None;
+            }
+            Some((field_name, field_type, metadata))
+        })
+        .collect();
+
+    let candidate_accumulators: Vec<_> = entity_fields
+        .iter()
+        .flat_map(|(field_name, field_type, metadata)| {
+            metadata.variables.iter().map(move |variable| {
+                let slot_count = quote! { solution.#field_name.len() };
+                if variable.provider_is_entity_field {
+                    let typed_slice_ident =
+                        format_ident!("__solverforge_values_for_{}_typed", variable.field_name);
+                    quote! {
+                        total_slots += #slot_count;
+                        total_candidates += solution
+                            .#field_name
+                            .iter()
+                            .map(|entity| <#field_type>::#typed_slice_ident(entity).len())
+                            .sum::<usize>();
+                    }
+                } else if let Some((from, to)) = variable.countable_range {
+                    let from_usize = usize::try_from(from).expect(
+                        "countable_range start must be non-negative for candidate counting",
+                    );
+                    let to_usize = usize::try_from(to)
+                        .expect("countable_range end must be non-negative for candidate counting");
+                    let count = to_usize.saturating_sub(from_usize);
+                    quote! {
+                        total_slots += #slot_count;
+                        total_candidates += #slot_count * #count;
+                    }
+                } else if let Some(provider_field_name) = &variable.value_range_provider {
+                    let provider_ident = format_ident!("{provider_field_name}");
+                    quote! {
+                        total_slots += #slot_count;
+                        total_candidates += #slot_count * solution.#provider_ident.len();
+                    }
+                } else {
+                    quote! {
+                        total_slots += #slot_count;
+                    }
+                }
+            })
+        })
+        .collect();
+
+    quote! {
+        fn __solverforge_standard_candidate_count(solution: &#solution_name) -> usize {
+            let mut total_slots = 0usize;
+            let mut total_candidates = 0usize;
+            #(#candidate_accumulators)*
+            if total_slots == 0 {
+                0
+            } else {
+                (total_candidates + (total_slots / 2)) / total_slots
+            }
+        }
+    }
+}
+
 pub(super) fn generate_runtime_phase_support(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     constraints_path: &Option<String>,
@@ -301,6 +379,8 @@ pub(super) fn generate_runtime_phase_support(
         })
         .collect();
     let standard_setup = generate_scalar_runtime_setup(fields, solution_name);
+    let standard_candidate_count_helper =
+        generate_standard_candidate_count_helper(fields, solution_name);
 
     if !list_owners.is_empty() {
         let cross_enum_ident = format_ident!("__{}CrossDistanceMeter", solution_name);
@@ -475,6 +555,8 @@ pub(super) fn generate_runtime_phase_support(
             }
 
             impl #solution_name {
+                #standard_candidate_count_helper
+
                 fn __solverforge_default_time_limit_secs() -> u64 {
                     if Self::__solverforge_has_list_variable() {
                         60
@@ -527,7 +609,7 @@ pub(super) fn generate_runtime_phase_support(
                             ::core::option::Option::None,
                             ::core::option::Option::None,
                             ::core::option::Option::Some(
-                                descriptor.genuine_variable_descriptors().len(),
+                                Self::__solverforge_standard_candidate_count(solution),
                             ),
                         );
                     }
@@ -599,6 +681,8 @@ pub(super) fn generate_runtime_phase_support(
 
     quote! {
         impl #solution_name {
+            #standard_candidate_count_helper
+
             const fn __solverforge_default_time_limit_secs() -> u64 {
                 30
             }
@@ -621,7 +705,7 @@ pub(super) fn generate_runtime_phase_support(
                     ::core::option::Option::None,
                     ::core::option::Option::None,
                     ::core::option::Option::Some(
-                        descriptor.genuine_variable_descriptors().len(),
+                        Self::__solverforge_standard_candidate_count(solution),
                     ),
                 );
             }

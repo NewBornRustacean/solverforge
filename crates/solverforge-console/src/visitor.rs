@@ -60,8 +60,9 @@ impl Visit for EventVisitor {
             // TRACE step events emit `move_index`; keep `entity` as a legacy alias.
             "entity" | "move_index" => self.entity = Some(value),
             "entity_count" => self.entity_count = Some(value),
-            // List solves emit `element_count`; keep `value_count` for legacy/basic solves.
-            "value_count" | "element_count" => self.value_count = Some(value),
+            // `element_count` is for list solves, `candidate_count` for standard solves,
+            // and `value_count` remains as a legacy alias.
+            "value_count" | "element_count" | "candidate_count" => self.value_count = Some(value),
             "constraint_count" => self.constraint_count = Some(value),
             "time_limit_secs" => self.time_limit_secs = Some(value),
             "moves_speed" => self.moves_speed = Some(u128::from(value)),
