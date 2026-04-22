@@ -334,57 +334,6 @@ fn finalize_noop_construction<S, D, ProgressCb>(
     }
 }
 
-#[cfg(test)]
-mod construction_routing_tests {
-    use super::should_use_descriptor_standard_path;
-    use solverforge_config::ConstructionHeuristicType;
-
-    #[test]
-    fn pure_scalar_first_fit_uses_descriptor_standard_path() {
-        assert!(should_use_descriptor_standard_path(
-            ConstructionHeuristicType::FirstFit,
-            true,
-            false,
-        ));
-    }
-
-    #[test]
-    fn pure_scalar_cheapest_insertion_uses_descriptor_standard_path() {
-        assert!(should_use_descriptor_standard_path(
-            ConstructionHeuristicType::CheapestInsertion,
-            true,
-            false,
-        ));
-    }
-
-    #[test]
-    fn mixed_first_fit_keeps_generic_construction_path() {
-        assert!(!should_use_descriptor_standard_path(
-            ConstructionHeuristicType::FirstFit,
-            true,
-            true,
-        ));
-    }
-
-    #[test]
-    fn mixed_cheapest_insertion_keeps_generic_construction_path() {
-        assert!(!should_use_descriptor_standard_path(
-            ConstructionHeuristicType::CheapestInsertion,
-            true,
-            true,
-        ));
-    }
-
-    #[test]
-    fn standard_only_heuristics_still_route_to_descriptor_path() {
-        assert!(should_use_descriptor_standard_path(
-            ConstructionHeuristicType::StrongestFit,
-            true,
-            true,
-        ));
-    }
-}
-
 pub enum RuntimePhase<C, LS, VND> {
     Construction(C),
     LocalSearch(LS),
@@ -484,4 +433,55 @@ where
     }
 
     PhaseSequence::new(phases)
+}
+
+#[cfg(test)]
+mod construction_routing_tests {
+    use super::should_use_descriptor_standard_path;
+    use solverforge_config::ConstructionHeuristicType;
+
+    #[test]
+    fn pure_scalar_first_fit_uses_descriptor_standard_path() {
+        assert!(should_use_descriptor_standard_path(
+            ConstructionHeuristicType::FirstFit,
+            true,
+            false,
+        ));
+    }
+
+    #[test]
+    fn pure_scalar_cheapest_insertion_uses_descriptor_standard_path() {
+        assert!(should_use_descriptor_standard_path(
+            ConstructionHeuristicType::CheapestInsertion,
+            true,
+            false,
+        ));
+    }
+
+    #[test]
+    fn mixed_first_fit_keeps_generic_construction_path() {
+        assert!(!should_use_descriptor_standard_path(
+            ConstructionHeuristicType::FirstFit,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn mixed_cheapest_insertion_keeps_generic_construction_path() {
+        assert!(!should_use_descriptor_standard_path(
+            ConstructionHeuristicType::CheapestInsertion,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn standard_only_heuristics_still_route_to_descriptor_path() {
+        assert!(should_use_descriptor_standard_path(
+            ConstructionHeuristicType::StrongestFit,
+            true,
+            true,
+        ));
+    }
 }
