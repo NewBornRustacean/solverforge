@@ -129,15 +129,15 @@ fn test_default_pillar_selector_groups_by_value() {
 
     let pillars: Vec<_> = selector.iter(&director).collect();
 
-    // Should have 3 pillars (for shift values 1, 2, 3)
-    assert_eq!(pillars.len(), 3);
+    // Public pillar semantics exclude singleton pillars.
+    assert_eq!(pillars.len(), 2);
 
     // Find pillar sizes
     let mut sizes: Vec<_> = pillars.iter().map(|p| p.size()).collect();
     sizes.sort();
 
-    // Should have pillars of size 1, 2, and 3
-    assert_eq!(sizes, vec![1, 2, 3]);
+    // Should have pillars of size 2 and 3
+    assert_eq!(sizes, vec![2, 3]);
 }
 
 #[test]
@@ -197,6 +197,55 @@ fn test_pillar_selector_with_minimum_size() {
 }
 
 #[test]
+fn test_default_pillar_selector_preserves_canonical_first_entity_order() {
+    let employees = vec![
+        Employee {
+            id: 0,
+            shift: Some(2),
+        },
+        Employee {
+            id: 1,
+            shift: Some(2),
+        },
+        Employee {
+            id: 2,
+            shift: Some(1),
+        },
+        Employee {
+            id: 3,
+            shift: Some(1),
+        },
+        Employee {
+            id: 4,
+            shift: Some(1),
+        },
+    ];
+    let director = create_test_director(employees);
+
+    let selector = DefaultPillarSelector::<ScheduleSolution, i32, _, _>::new(
+        FromSolutionEntitySelector::new(0),
+        0,
+        "shift",
+        |sd: &dyn Director<ScheduleSolution>, _desc_idx, entity_idx| {
+            sd.working_solution()
+                .employees
+                .get(entity_idx)
+                .and_then(|employee| employee.shift)
+        },
+    );
+
+    let pillars: Vec<_> = selector.iter(&director).collect();
+    let first_indices: Vec<_> = pillars
+        .iter()
+        .map(|pillar| pillar.first().expect("pillar first entity").entity_index)
+        .collect();
+
+    assert_eq!(first_indices, vec![0, 2]);
+    assert_eq!(pillars[0].size(), 2);
+    assert_eq!(pillars[1].size(), 3);
+}
+
+#[test]
 fn test_pillar_selector_with_none_values() {
     // Create employees with some unassigned
     let employees = vec![
@@ -232,8 +281,8 @@ fn test_pillar_selector_with_none_values() {
 
     let pillars: Vec<_> = selector.iter(&director).collect();
 
-    // Should have 2 pillars: one for shift 1 (2 entities), one for None (2 entities)
-    assert_eq!(pillars.len(), 2);
+    // Public pillar semantics exclude unassigned entities entirely.
+    assert_eq!(pillars.len(), 1);
 }
 
 #[test]

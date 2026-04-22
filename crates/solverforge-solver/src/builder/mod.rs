@@ -8,8 +8,8 @@ pub mod acceptor;
 pub mod context;
 pub mod forager;
 mod list_selector;
+mod scalar_selector;
 pub mod selector;
-mod standard_selector;
 
 pub use acceptor::{AcceptorBuilder, AnyAcceptor};
 pub use context::{

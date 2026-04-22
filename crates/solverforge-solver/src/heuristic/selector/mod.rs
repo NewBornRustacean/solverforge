@@ -19,6 +19,7 @@ pub mod nearby_list_change;
 mod nearby_list_support;
 pub mod nearby_list_swap;
 pub mod pillar;
+pub(crate) mod pillar_support;
 pub mod ruin;
 mod selection_order;
 pub mod sublist_change;
@@ -37,26 +38,24 @@ pub use k_opt::{
     NearbyKOptMoveSelector,
 };
 pub use list_change::ListChangeMoveSelector;
-pub use list_reverse::{ListMoveListReverseSelector, ListReverseMoveSelector};
+pub use list_reverse::ListReverseMoveSelector;
 pub use list_ruin::ListRuinMoveSelector;
-pub use list_swap::{ListMoveListSwapSelector, ListSwapMoveSelector};
+pub use list_swap::ListSwapMoveSelector;
 pub use mimic::{MimicRecorder, MimicRecordingEntitySelector, MimicReplayingEntitySelector};
 pub use move_selector::{
-    ChangeMoveSelector, EitherChangeMoveSelector, EitherSwapMoveSelector, ListMoveKOptSelector,
-    ListMoveListChangeSelector, ListMoveListRuinSelector, ListMoveNearbyKOptSelector, MoveSelector,
+    ChangeMoveSelector, MoveSelector, ScalarChangeMoveSelector, ScalarSwapMoveSelector,
     SwapMoveSelector,
 };
 pub use nearby::{NearbyDistanceMeter, NearbyEntitySelector, NearbySelectionConfig};
 pub use nearby_list_change::{
-    CrossEntityDistanceMeter, DefaultCrossEntityDistanceMeter, ListMoveNearbyListChangeSelector,
-    NearbyListChangeMoveSelector,
+    CrossEntityDistanceMeter, DefaultCrossEntityDistanceMeter, NearbyListChangeMoveSelector,
 };
-pub use nearby_list_swap::{ListMoveNearbyListSwapSelector, NearbyListSwapMoveSelector};
+pub use nearby_list_swap::NearbyListSwapMoveSelector;
 pub use pillar::{DefaultPillarSelector, Pillar, PillarSelector, SubPillarConfig};
 pub use ruin::RuinMoveSelector;
 pub use selection_order::SelectionOrder;
-pub use sublist_change::{ListMoveSubListChangeSelector, SubListChangeMoveSelector};
-pub use sublist_swap::{ListMoveSubListSwapSelector, SubListSwapMoveSelector};
+pub use sublist_change::SublistChangeMoveSelector;
+pub use sublist_swap::SublistSwapMoveSelector;
 pub use value_selector::{
     FromSolutionValueSelector, PerEntitySliceValueSelector, PerEntityValueSelector,
     RangeValueSelector, StaticValueSelector, ValueSelector,

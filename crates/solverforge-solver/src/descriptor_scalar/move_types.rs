@@ -369,8 +369,20 @@ where
     S: PlanningSolution + 'static,
 {
     fn is_doable<D: Director<S>>(&self, score_director: &D) -> bool {
-        self.entity_indices.first().is_some_and(|&entity_index| {
+        if self.entity_indices.is_empty() {
+            return false;
+        }
+
+        let solution = score_director.working_solution() as &dyn Any;
+        self.entity_indices.iter().any(|&entity_index| {
             self.current_value(score_director.working_solution(), entity_index) != self.to_value
+        }) && self.entity_indices.iter().all(|&entity_index| {
+            self.binding.value_is_legal_for_entity_index(
+                &self.solution_descriptor,
+                solution,
+                entity_index,
+                self.to_value,
+            )
         })
     }
 
@@ -528,13 +540,41 @@ where
     S: PlanningSolution + 'static,
 {
     fn is_doable<D: Director<S>>(&self, score_director: &D) -> bool {
-        self.left_indices
-            .first()
-            .zip(self.right_indices.first())
-            .is_some_and(|(&left_index, &right_index)| {
-                self.current_value(score_director.working_solution(), left_index)
-                    != self.current_value(score_director.working_solution(), right_index)
-            })
+        let Some(&left_index) = self.left_indices.first() else {
+            return false;
+        };
+        let Some(&right_index) = self.right_indices.first() else {
+            return false;
+        };
+
+        let Some(left_value) = self.current_value(score_director.working_solution(), left_index) else {
+            return false;
+        };
+        let Some(right_value) = self.current_value(score_director.working_solution(), right_index) else {
+            return false;
+        };
+        if left_value == right_value {
+            return false;
+        }
+
+        let solution = score_director.working_solution() as &dyn Any;
+        self.left_indices.iter().all(|&entity_index| {
+            self.current_value(score_director.working_solution(), entity_index) == Some(left_value)
+                && self.binding.value_is_legal_for_entity_index(
+                    &self.solution_descriptor,
+                    solution,
+                    entity_index,
+                    Some(right_value),
+                )
+        }) && self.right_indices.iter().all(|&entity_index| {
+            self.current_value(score_director.working_solution(), entity_index) == Some(right_value)
+                && self.binding.value_is_legal_for_entity_index(
+                    &self.solution_descriptor,
+                    solution,
+                    entity_index,
+                    Some(left_value),
+                )
+        })
     }
 
     fn do_move<D: Director<S>>(&self, score_director: &mut D) {

@@ -39,6 +39,9 @@ impl<S> fmt::Debug for ValueSource<S> {
     }
 }
 
+pub type NearbyValueDistanceMeter<S> = fn(&S, usize, usize) -> f64;
+pub type NearbyEntityDistanceMeter<S> = fn(&S, usize, usize) -> f64;
+
 pub struct ScalarVariableContext<S> {
     pub descriptor_index: usize,
     pub entity_type_name: &'static str,
@@ -48,6 +51,8 @@ pub struct ScalarVariableContext<S> {
     pub setter: fn(&mut S, usize, Option<usize>),
     pub value_source: ValueSource<S>,
     pub allows_unassigned: bool,
+    pub nearby_value_distance_meter: Option<NearbyValueDistanceMeter<S>>,
+    pub nearby_entity_distance_meter: Option<NearbyEntityDistanceMeter<S>>,
 }
 
 impl<S> Clone for ScalarVariableContext<S> {
@@ -79,7 +84,22 @@ impl<S> ScalarVariableContext<S> {
             setter,
             value_source,
             allows_unassigned,
+            nearby_value_distance_meter: None,
+            nearby_entity_distance_meter: None,
         }
+    }
+
+    pub fn with_nearby_value_distance_meter(mut self, meter: NearbyValueDistanceMeter<S>) -> Self {
+        self.nearby_value_distance_meter = Some(meter);
+        self
+    }
+
+    pub fn with_nearby_entity_distance_meter(
+        mut self,
+        meter: NearbyEntityDistanceMeter<S>,
+    ) -> Self {
+        self.nearby_entity_distance_meter = Some(meter);
+        self
     }
 
     pub fn matches_target(&self, entity_class: Option<&str>, variable_name: Option<&str>) -> bool {
@@ -96,6 +116,14 @@ impl<S> fmt::Debug for ScalarVariableContext<S> {
             .field("variable_name", &self.variable_name)
             .field("value_source", &self.value_source)
             .field("allows_unassigned", &self.allows_unassigned)
+            .field(
+                "has_nearby_value_distance_meter",
+                &self.nearby_value_distance_meter.is_some(),
+            )
+            .field(
+                "has_nearby_entity_distance_meter",
+                &self.nearby_entity_distance_meter.is_some(),
+            )
             .finish()
     }
 }

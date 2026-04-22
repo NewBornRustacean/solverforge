@@ -10,12 +10,13 @@ All moves are fully typed with inline value storage for maximum performance:
 - `ChangeMove<S, V>` - assigns a value to a variable
 - `SwapMove<S, V>` - swaps values between two entities
 - `CompositeMove<'a, S, M1, M2>` - applies two moves by reference
+- `SequentialCompositeMove<S, M>` - applies two arena-backed moves in sequence
 - `PillarChangeMove<S, V>` - changes multiple entities with same value
 - `PillarSwapMove<S, V>` - swaps between two pillars
 - `ListChangeMove<S, V>` - relocates an element in a list variable
 - `ListSwapMove<S, V>` - swaps two elements in list variables
-- `SubListChangeMove<S, V>` - relocates a contiguous sublist
-- `SubListSwapMove<S, V>` - swaps two contiguous sublists
+- `SublistChangeMove<S, V>` - relocates a contiguous sublist
+- `SublistSwapMove<S, V>` - swaps two contiguous sublists
 - `ListReverseMove<S, V>` - reverses a segment (2-opt for TSP)
 - `RuinMove<S, V>` - unassigns multiple entities (for Large Neighborhood Search)
 - `ListRuinMove<S, V>` - removes elements from a list (for LNS on list variables)
@@ -63,9 +64,11 @@ mod list_either;
 mod list_reverse;
 mod list_ruin;
 mod list_swap;
+pub(crate) mod metadata;
 mod pillar_change;
 mod pillar_swap;
 mod ruin;
+mod ruin_recreate;
 mod sublist_change;
 mod sublist_swap;
 mod swap;
@@ -77,17 +80,20 @@ mod tests;
 pub use arena::MoveArena;
 pub use change::ChangeMove;
 pub use composite::CompositeMove;
-pub use either::EitherMove;
+pub use composite::SequentialCompositeMove;
+pub use either::ScalarMoveUnion;
 pub use k_opt::{CutPoint, KOptMove};
 pub use list_change::ListChangeMove;
-pub use list_either::ListMoveImpl;
+pub use list_either::ListMoveUnion;
 pub use list_reverse::ListReverseMove;
 pub use list_ruin::ListRuinMove;
 pub use list_swap::ListSwapMove;
+pub use metadata::MoveTabuSignature;
 pub use pillar_change::PillarChangeMove;
 pub use pillar_swap::PillarSwapMove;
 pub use ruin::RuinMove;
-pub use sublist_change::SubListChangeMove;
-pub use sublist_swap::SubListSwapMove;
+pub use ruin_recreate::{RuinRecreateMove, ScalarRecreateValueSource};
+pub use sublist_change::SublistChangeMove;
+pub use sublist_swap::SublistSwapMove;
 pub use swap::SwapMove;
 pub use traits::Move;

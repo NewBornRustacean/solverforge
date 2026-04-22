@@ -5,7 +5,6 @@ Pillar moves operate on entire pillars, changing or swapping all entities
 in the pillar atomically.
 */
 
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -14,6 +13,7 @@ use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::Director;
 
 use super::entity::{EntityReference, EntitySelector};
+use super::pillar_support::collect_pillar_groups;
 
 /* A pillar is a group of entity references that share the same variable value.
 
@@ -211,26 +211,22 @@ where
 
     // Builds the pillar list from the current solution state.
     fn build_pillars<D: Director<S>>(&self, score_director: &D) -> Vec<Pillar> {
-        // Group entities by their value
-        let mut value_to_entities: HashMap<Option<V>, Vec<EntityReference>> = HashMap::new();
-
-        for entity_ref in self.entity_selector.iter(score_director) {
-            // Use dyn Director for the extractor (intentional type-erasure boundary)
-            let value = (self.value_extractor)(
-                score_director,
-                entity_ref.descriptor_index,
-                entity_ref.entity_index,
-            );
-            value_to_entities.entry(value).or_default().push(entity_ref);
-        }
-
-        // Filter by minimum size and create pillars
-        let min_size = self.sub_pillar_config.minimum_size;
-        value_to_entities
-            .into_values()
-            .filter(|entities| entities.len() >= min_size)
-            .map(Pillar::new)
-            .collect()
+        collect_pillar_groups(
+            self.entity_selector.iter(score_director).map(|entity_ref| {
+                (
+                    entity_ref,
+                    (self.value_extractor)(
+                        score_director,
+                        entity_ref.descriptor_index,
+                        entity_ref.entity_index,
+                    ),
+                )
+            }),
+            &self.sub_pillar_config,
+        )
+        .into_iter()
+        .map(|group| group.pillar)
+        .collect()
     }
 }
 

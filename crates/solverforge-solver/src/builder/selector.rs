@@ -1,14 +1,16 @@
 use std::fmt::{self, Debug};
 
 use solverforge_config::{
-    ChangeMoveConfig, ListReverseMoveConfig, LocalSearchConfig, MoveSelectorConfig,
+    AcceptorConfig, ChangeMoveConfig, ListReverseMoveConfig, LocalSearchConfig, MoveSelectorConfig,
     NearbyListChangeMoveConfig, NearbyListSwapMoveConfig, VariableTargetConfig, VndConfig,
 };
 use solverforge_core::domain::PlanningSolution;
 use solverforge_core::score::{ParseableScore, Score};
 
-use crate::heuristic::r#move::{EitherMove, ListMoveImpl, Move, MoveArena};
-use crate::heuristic::selector::decorator::VecUnionSelector;
+use crate::heuristic::r#move::{
+    ListMoveUnion, Move, MoveArena, MoveTabuSignature, ScalarMoveUnion, SequentialCompositeMove,
+};
+use crate::heuristic::selector::decorator::{CartesianProductSelector, VecUnionSelector};
 use crate::heuristic::selector::move_selector::MoveSelector;
 use crate::heuristic::selector::nearby_list_change::CrossEntityDistanceMeter;
 use crate::phase::dynamic_vnd::DynamicVndPhase;
@@ -20,14 +22,15 @@ use super::acceptor::{AcceptorBuilder, AnyAcceptor};
 use super::context::ModelContext;
 use super::forager::{AnyForager, ForagerBuilder};
 use super::list_selector::{ListLeafSelector, ListMoveSelectorBuilder};
-use super::standard_selector::{build_standard_move_selector, StandardLeafSelector};
+use super::scalar_selector::{build_scalar_flat_selector, ScalarLeafSelector};
 
 type LeafSelector<S, V, DM, IDM> =
     VecUnionSelector<S, NeighborhoodMove<S, V>, NeighborhoodLeaf<S, V, DM, IDM>>;
 
 pub enum NeighborhoodMove<S, V> {
-    Scalar(EitherMove<S, usize>),
-    List(ListMoveImpl<S, V>),
+    Scalar(ScalarMoveUnion<S, usize>),
+    List(ListMoveUnion<S, V>),
+    Composite(SequentialCompositeMove<S, NeighborhoodMove<S, V>>),
 }
 
 impl<S, V> Debug for NeighborhoodMove<S, V>
@@ -39,6 +42,7 @@ where
         match self {
             Self::Scalar(m) => write!(f, "NeighborhoodMove::Scalar({m:?})"),
             Self::List(m) => write!(f, "NeighborhoodMove::List({m:?})"),
+            Self::Composite(m) => write!(f, "NeighborhoodMove::Composite({m:?})"),
         }
     }
 }
@@ -52,6 +56,7 @@ where
         match self {
             Self::Scalar(m) => m.is_doable(score_director),
             Self::List(m) => m.is_doable(score_director),
+            Self::Composite(m) => m.is_doable(score_director),
         }
     }
 
@@ -59,6 +64,7 @@ where
         match self {
             Self::Scalar(m) => m.do_move(score_director),
             Self::List(m) => m.do_move(score_director),
+            Self::Composite(m) => m.do_move(score_director),
         }
     }
 
@@ -66,6 +72,7 @@ where
         match self {
             Self::Scalar(m) => m.descriptor_index(),
             Self::List(m) => m.descriptor_index(),
+            Self::Composite(m) => m.descriptor_index(),
         }
     }
 
@@ -73,6 +80,7 @@ where
         match self {
             Self::Scalar(m) => m.entity_indices(),
             Self::List(m) => m.entity_indices(),
+            Self::Composite(m) => m.entity_indices(),
         }
     }
 
@@ -80,6 +88,18 @@ where
         match self {
             Self::Scalar(m) => m.variable_name(),
             Self::List(m) => m.variable_name(),
+            Self::Composite(m) => m.variable_name(),
+        }
+    }
+
+    fn tabu_signature<D: solverforge_scoring::Director<S>>(
+        &self,
+        score_director: &D,
+    ) -> MoveTabuSignature {
+        match self {
+            Self::Scalar(m) => m.tabu_signature(score_director),
+            Self::List(m) => m.tabu_signature(score_director),
+            Self::Composite(m) => m.tabu_signature(score_director),
         }
     }
 }
@@ -89,9 +109,9 @@ where
     S: PlanningSolution + 'static,
     V: Clone + PartialEq + Send + Sync + Debug + 'static,
     DM: CrossEntityDistanceMeter<S> + Clone,
-    IDM: CrossEntityDistanceMeter<S> + Clone,
+    IDM: CrossEntityDistanceMeter<S> + Clone + 'static,
 {
-    Scalar(StandardLeafSelector<S>),
+    Scalar(ScalarLeafSelector<S>),
     List(ListLeafSelector<S, V, DM, IDM>),
 }
 
@@ -100,7 +120,7 @@ where
     S: PlanningSolution + 'static,
     V: Clone + PartialEq + Send + Sync + Debug + 'static,
     DM: CrossEntityDistanceMeter<S> + Clone + Debug,
-    IDM: CrossEntityDistanceMeter<S> + Clone + Debug,
+    IDM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -191,7 +211,22 @@ where
     S: PlanningSolution + 'static,
     V: Clone + PartialEq + Send + Sync + Debug + 'static,
     DM: CrossEntityDistanceMeter<S> + Clone,
-    IDM: CrossEntityDistanceMeter<S> + Clone,
+    IDM: CrossEntityDistanceMeter<S> + Clone + 'static,
+{
+    Flat(LeafSelector<S, V, DM, IDM>),
+    Limited {
+        selector: LeafSelector<S, V, DM, IDM>,
+        selected_count_limit: usize,
+    },
+    Cartesian(CartesianNeighborhoodSelector<S, V, DM, IDM>),
+}
+
+pub enum CartesianChildSelector<S, V, DM, IDM>
+where
+    S: PlanningSolution + 'static,
+    V: Clone + PartialEq + Send + Sync + Debug + 'static,
+    DM: CrossEntityDistanceMeter<S> + Clone,
+    IDM: CrossEntityDistanceMeter<S> + Clone + 'static,
 {
     Flat(LeafSelector<S, V, DM, IDM>),
     Limited {
@@ -200,12 +235,19 @@ where
     },
 }
 
+type CartesianNeighborhoodSelector<S, V, DM, IDM> = CartesianProductSelector<
+    S,
+    NeighborhoodMove<S, V>,
+    CartesianChildSelector<S, V, DM, IDM>,
+    CartesianChildSelector<S, V, DM, IDM>,
+>;
+
 impl<S, V, DM, IDM> Debug for Neighborhood<S, V, DM, IDM>
 where
     S: PlanningSolution + 'static,
     V: Clone + PartialEq + Send + Sync + Debug + 'static,
-    DM: CrossEntityDistanceMeter<S> + Clone + Debug,
-    IDM: CrossEntityDistanceMeter<S> + Clone + Debug,
+    DM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
+    IDM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -218,6 +260,7 @@ where
                 .field("selector", selector)
                 .field("selected_count_limit", selected_count_limit)
                 .finish(),
+            Self::Cartesian(selector) => write!(f, "Neighborhood::Cartesian({selector:?})"),
         }
     }
 }
@@ -233,12 +276,97 @@ where
         &'a self,
         score_director: &D,
     ) -> impl Iterator<Item = NeighborhoodMove<S, V>> + 'a {
-        enum NeighborhoodIter<A, B> {
+        enum NeighborhoodIter<A, B, C> {
+            Flat(A),
+            Limited(B),
+            Cartesian(C),
+        }
+
+        impl<T, A, B, C> Iterator for NeighborhoodIter<A, B, C>
+        where
+            A: Iterator<Item = T>,
+            B: Iterator<Item = T>,
+            C: Iterator<Item = T>,
+        {
+            type Item = T;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                match self {
+                    Self::Flat(iter) => iter.next(),
+                    Self::Limited(iter) => iter.next(),
+                    Self::Cartesian(iter) => iter.next(),
+                }
+            }
+        }
+
+        match self {
+            Self::Flat(selector) => NeighborhoodIter::Flat(selector.open_cursor(score_director)),
+            Self::Limited {
+                selector,
+                selected_count_limit,
+            } => NeighborhoodIter::Limited(
+                selector
+                    .open_cursor(score_director)
+                    .take(*selected_count_limit),
+            ),
+            Self::Cartesian(selector) => {
+                NeighborhoodIter::Cartesian(selector.open_cursor(score_director))
+            }
+        }
+    }
+
+    fn size<D: solverforge_scoring::Director<S>>(&self, score_director: &D) -> usize {
+        match self {
+            Self::Flat(selector) => selector.size(score_director),
+            Self::Limited {
+                selector,
+                selected_count_limit,
+            } => selector.size(score_director).min(*selected_count_limit),
+            Self::Cartesian(selector) => selector.size(score_director),
+        }
+    }
+}
+
+impl<S, V, DM, IDM> Debug for CartesianChildSelector<S, V, DM, IDM>
+where
+    S: PlanningSolution + 'static,
+    V: Clone + PartialEq + Send + Sync + Debug + 'static,
+    DM: CrossEntityDistanceMeter<S> + Clone + Debug,
+    IDM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Flat(selector) => write!(f, "CartesianChildSelector::Flat({selector:?})"),
+            Self::Limited {
+                selector,
+                selected_count_limit,
+            } => f
+                .debug_struct("CartesianChildSelector::Limited")
+                .field("selector", selector)
+                .field("selected_count_limit", selected_count_limit)
+                .finish(),
+        }
+    }
+}
+
+impl<S, V, DM, IDM> MoveSelector<S, NeighborhoodMove<S, V>>
+    for CartesianChildSelector<S, V, DM, IDM>
+where
+    S: PlanningSolution + 'static,
+    V: Clone + PartialEq + Send + Sync + Debug + 'static,
+    DM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
+    IDM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
+{
+    fn open_cursor<'a, D: solverforge_scoring::Director<S>>(
+        &'a self,
+        score_director: &D,
+    ) -> impl Iterator<Item = NeighborhoodMove<S, V>> + 'a {
+        enum ChildIter<A, B> {
             Flat(A),
             Limited(B),
         }
 
-        impl<T, A, B> Iterator for NeighborhoodIter<A, B>
+        impl<T, A, B> Iterator for ChildIter<A, B>
         where
             A: Iterator<Item = T>,
             B: Iterator<Item = T>,
@@ -254,11 +382,11 @@ where
         }
 
         match self {
-            Self::Flat(selector) => NeighborhoodIter::Flat(selector.open_cursor(score_director)),
+            Self::Flat(selector) => ChildIter::Flat(selector.open_cursor(score_director)),
             Self::Limited {
                 selector,
                 selected_count_limit,
-            } => NeighborhoodIter::Limited(
+            } => ChildIter::Limited(
                 selector
                     .open_cursor(score_director)
                     .take(*selected_count_limit),
@@ -301,15 +429,19 @@ enum SelectorFamily {
 
 fn selector_family(config: &MoveSelectorConfig) -> SelectorFamily {
     match config {
-        MoveSelectorConfig::ChangeMoveSelector(_) | MoveSelectorConfig::SwapMoveSelector(_) => {
-            SelectorFamily::Scalar
-        }
+        MoveSelectorConfig::ChangeMoveSelector(_)
+        | MoveSelectorConfig::SwapMoveSelector(_)
+        | MoveSelectorConfig::NearbyChangeMoveSelector(_)
+        | MoveSelectorConfig::NearbySwapMoveSelector(_)
+        | MoveSelectorConfig::PillarChangeMoveSelector(_)
+        | MoveSelectorConfig::PillarSwapMoveSelector(_)
+        | MoveSelectorConfig::RuinRecreateMoveSelector(_) => SelectorFamily::Scalar,
         MoveSelectorConfig::ListChangeMoveSelector(_)
         | MoveSelectorConfig::NearbyListChangeMoveSelector(_)
         | MoveSelectorConfig::ListSwapMoveSelector(_)
         | MoveSelectorConfig::NearbyListSwapMoveSelector(_)
-        | MoveSelectorConfig::SubListChangeMoveSelector(_)
-        | MoveSelectorConfig::SubListSwapMoveSelector(_)
+        | MoveSelectorConfig::SublistChangeMoveSelector(_)
+        | MoveSelectorConfig::SublistSwapMoveSelector(_)
         | MoveSelectorConfig::ListReverseMoveSelector(_)
         | MoveSelectorConfig::KOptMoveSelector(_)
         | MoveSelectorConfig::ListRuinMoveSelector(_) => SelectorFamily::List,
@@ -350,7 +482,7 @@ fn push_scalar_selector<S, V, DM, IDM>(
     if scalar_variables.is_empty() {
         return;
     }
-    let selector = build_standard_move_selector(config, &scalar_variables);
+    let selector = build_scalar_flat_selector(config, &scalar_variables);
     out.extend(
         selector
             .into_selectors()
@@ -371,7 +503,7 @@ fn push_list_selector<S, V, DM, IDM>(
     IDM: CrossEntityDistanceMeter<S> + Clone + 'static,
 {
     for variable in model.list_variables() {
-        let selector = ListMoveSelectorBuilder::build(config, variable, random_seed);
+        let selector = ListMoveSelectorBuilder::build_flat(config, variable, random_seed);
         out.extend(
             selector
                 .into_selectors()
@@ -396,15 +528,20 @@ where
     match config {
         None => unreachable!("default neighborhoods must be resolved before leaf selection"),
         Some(MoveSelectorConfig::ChangeMoveSelector(_))
-        | Some(MoveSelectorConfig::SwapMoveSelector(_)) => {
+        | Some(MoveSelectorConfig::SwapMoveSelector(_))
+        | Some(MoveSelectorConfig::NearbyChangeMoveSelector(_))
+        | Some(MoveSelectorConfig::NearbySwapMoveSelector(_))
+        | Some(MoveSelectorConfig::PillarChangeMoveSelector(_))
+        | Some(MoveSelectorConfig::PillarSwapMoveSelector(_))
+        | Some(MoveSelectorConfig::RuinRecreateMoveSelector(_)) => {
             push_scalar_selector(config, model, &mut leaves);
         }
         Some(MoveSelectorConfig::ListChangeMoveSelector(_))
         | Some(MoveSelectorConfig::NearbyListChangeMoveSelector(_))
         | Some(MoveSelectorConfig::ListSwapMoveSelector(_))
         | Some(MoveSelectorConfig::NearbyListSwapMoveSelector(_))
-        | Some(MoveSelectorConfig::SubListChangeMoveSelector(_))
-        | Some(MoveSelectorConfig::SubListSwapMoveSelector(_))
+        | Some(MoveSelectorConfig::SublistChangeMoveSelector(_))
+        | Some(MoveSelectorConfig::SublistSwapMoveSelector(_))
         | Some(MoveSelectorConfig::ListReverseMoveSelector(_))
         | Some(MoveSelectorConfig::KOptMoveSelector(_))
         | Some(MoveSelectorConfig::ListRuinMoveSelector(_)) => {
@@ -447,8 +584,47 @@ where
     VecUnionSelector::new(leaves)
 }
 
+fn build_cartesian_child_selector<S, V, DM, IDM>(
+    config: &MoveSelectorConfig,
+    model: &ModelContext<S, V, DM, IDM>,
+    random_seed: Option<u64>,
+) -> CartesianChildSelector<S, V, DM, IDM>
+where
+    S: PlanningSolution + 'static,
+    V: Clone + PartialEq + Send + Sync + Debug + 'static,
+    DM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
+    IDM: CrossEntityDistanceMeter<S> + Clone + Debug + 'static,
+{
+    match config {
+        MoveSelectorConfig::LimitedNeighborhood(limit) => CartesianChildSelector::Limited {
+            selector: build_leaf_selector(Some(limit.selector.as_ref()), model, random_seed),
+            selected_count_limit: limit.selected_count_limit,
+        },
+        MoveSelectorConfig::CartesianProductMoveSelector(_) => {
+            panic!("nested cartesian_product move selectors are not supported")
+        }
+        other => CartesianChildSelector::Flat(build_leaf_selector(Some(other), model, random_seed)),
+    }
+}
+
+fn wrap_neighborhood_composite<S, V>(
+    mov: SequentialCompositeMove<S, NeighborhoodMove<S, V>>,
+) -> NeighborhoodMove<S, V>
+where
+    S: PlanningSolution,
+    V: Clone + PartialEq + Send + Sync + Debug + 'static,
+{
+    NeighborhoodMove::Composite(mov)
+}
+
 fn default_scalar_change_selector() -> MoveSelectorConfig {
     MoveSelectorConfig::ChangeMoveSelector(ChangeMoveConfig {
+        target: VariableTargetConfig::default(),
+    })
+}
+
+fn default_scalar_swap_selector() -> MoveSelectorConfig {
+    MoveSelectorConfig::SwapMoveSelector(solverforge_config::SwapMoveConfig {
         target: VariableTargetConfig::default(),
     })
 }
@@ -513,6 +689,13 @@ fn collect_default_neighborhoods<S, V, DM, IDM>(
             model,
             random_seed,
         )));
+
+        let scalar_swap = default_scalar_swap_selector();
+        out.push(Neighborhood::Flat(build_leaf_selector(
+            Some(&scalar_swap),
+            model,
+            random_seed,
+        )));
     }
 }
 
@@ -541,10 +724,19 @@ fn collect_neighborhoods<S, V, DM, IDM>(
                 selected_count_limit: limit.selected_count_limit,
             });
         }
-        Some(MoveSelectorConfig::CartesianProductMoveSelector(_)) => {
-            panic!(
-                "cartesian_product move selectors are not supported in the runtime selector graph"
+        Some(MoveSelectorConfig::CartesianProductMoveSelector(cartesian)) => {
+            assert_eq!(
+                cartesian.selectors.len(),
+                2,
+                "cartesian_product move selector requires exactly two child selectors"
             );
+            let left = build_cartesian_child_selector(&cartesian.selectors[0], model, random_seed);
+            let right = build_cartesian_child_selector(&cartesian.selectors[1], model, random_seed);
+            out.push(Neighborhood::Cartesian(CartesianProductSelector::new(
+                left,
+                right,
+                wrap_neighborhood_composite::<S, V>,
+            )));
         }
         Some(other) => out.push(Neighborhood::Flat(build_leaf_selector(
             Some(other),
@@ -607,8 +799,15 @@ where
         .and_then(|ls| ls.forager.as_ref())
         .map(|cfg| ForagerBuilder::build::<S>(Some(cfg)))
         .unwrap_or_else(|| {
-            let accepted = if model.has_list_variables() { 4 } else { 1 };
-            AnyForager::AcceptedCount(AcceptedCountForager::new(accepted))
+            let is_tabu = config
+                .and_then(|ls| ls.acceptor.as_ref())
+                .is_some_and(|acceptor| matches!(acceptor, AcceptorConfig::TabuSearch(_)));
+            if is_tabu {
+                AnyForager::BestScore(crate::phase::localsearch::BestScoreForager::new())
+            } else {
+                let accepted = if model.has_list_variables() { 4 } else { 1 };
+                AnyForager::AcceptedCount(AcceptedCountForager::new(accepted))
+            }
         });
     let move_selector = build_move_selector(
         config.and_then(|ls| ls.move_selector.as_ref()),

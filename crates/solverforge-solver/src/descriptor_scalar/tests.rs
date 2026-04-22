@@ -3,7 +3,8 @@ use std::any::{Any, TypeId};
 use solverforge_config::{
     CartesianProductConfig, ChangeMoveConfig, ConstructionHeuristicConfig,
     ConstructionHeuristicType, MoveSelectorConfig, NearbyChangeMoveConfig, PillarChangeMoveConfig,
-    RecreateHeuristicType, RuinRecreateMoveSelectorConfig, SwapMoveConfig, VariableTargetConfig,
+    PillarSwapMoveConfig, RecreateHeuristicType, RuinRecreateMoveSelectorConfig, SwapMoveConfig,
+    VariableTargetConfig,
 };
 use solverforge_core::domain::{
     EntityCollectionExtractor, EntityDescriptor, PlanningSolution, ProblemFactDescriptor,
@@ -36,6 +37,31 @@ struct Plan {
 }
 
 impl PlanningSolution for Plan {
+    type Score = SoftScore;
+
+    fn score(&self) -> Option<Self::Score> {
+        self.score
+    }
+
+    fn set_score(&mut self, score: Option<Self::Score>) {
+        self.score = score;
+    }
+}
+
+#[derive(Clone, Debug)]
+struct RestrictedTask {
+    worker_idx: Option<usize>,
+    allowed_workers: Vec<usize>,
+}
+
+#[derive(Clone, Debug)]
+struct RestrictedPlan {
+    workers: Vec<Worker>,
+    tasks: Vec<RestrictedTask>,
+    score: Option<SoftScore>,
+}
+
+impl PlanningSolution for RestrictedPlan {
     type Score = SoftScore;
 
     fn score(&self) -> Option<Self::Score> {
@@ -171,6 +197,28 @@ fn nearby_worker_value_distance(solution: &dyn Any, entity_index: usize, value: 
     current.abs_diff(value) as f64
 }
 
+fn restricted_get_worker_idx(entity: &dyn Any) -> Option<usize> {
+    entity
+        .downcast_ref::<RestrictedTask>()
+        .expect("restricted task expected")
+        .worker_idx
+}
+
+fn restricted_set_worker_idx(entity: &mut dyn Any, value: Option<usize>) {
+    entity
+        .downcast_mut::<RestrictedTask>()
+        .expect("restricted task expected")
+        .worker_idx = value;
+}
+
+fn restricted_allowed_workers(entity: &dyn Any) -> Vec<usize> {
+    entity
+        .downcast_ref::<RestrictedTask>()
+        .expect("restricted task expected")
+        .allowed_workers
+        .clone()
+}
+
 fn descriptor_with_allows_unassigned(allows_unassigned: bool) -> SolutionDescriptor {
     SolutionDescriptor::new("Plan", TypeId::of::<Plan>())
         .with_entity(
@@ -229,6 +277,35 @@ fn descriptor_with_nearby_value_meter() -> SolutionDescriptor {
                     "workers",
                     |s: &Plan| &s.workers,
                     |s: &mut Plan| &mut s.workers,
+                )),
+            ),
+        )
+}
+
+fn restricted_descriptor() -> SolutionDescriptor {
+    SolutionDescriptor::new("RestrictedPlan", TypeId::of::<RestrictedPlan>())
+        .with_entity(
+            EntityDescriptor::new("Task", TypeId::of::<RestrictedTask>(), "tasks")
+                .with_extractor(Box::new(EntityCollectionExtractor::new(
+                    "Task",
+                    "tasks",
+                    |s: &RestrictedPlan| &s.tasks,
+                    |s: &mut RestrictedPlan| &mut s.tasks,
+                )))
+                .with_variable(
+                    VariableDescriptor::genuine("worker_idx")
+                        .with_allows_unassigned(true)
+                        .with_usize_accessors(restricted_get_worker_idx, restricted_set_worker_idx)
+                        .with_entity_value_provider(restricted_allowed_workers),
+                ),
+        )
+        .with_problem_fact(
+            ProblemFactDescriptor::new("Worker", TypeId::of::<Worker>(), "workers").with_extractor(
+                Box::new(EntityCollectionExtractor::new(
+                    "Worker",
+                    "workers",
+                    |s: &RestrictedPlan| &s.workers,
+                    |s: &mut RestrictedPlan| &mut s.workers,
                 )),
             ),
         )
@@ -557,11 +634,136 @@ fn descriptor_pillar_change_uses_public_pillar_semantics() {
     let selector = build_descriptor_move_selector::<Plan>(Some(&config), &descriptor);
     let moves: Vec<_> = selector.iter_moves(&director).collect();
 
-    assert_eq!(selector.size(&director), 3);
-    assert_eq!(moves.len(), 3);
+    assert_eq!(selector.size(&director), 2);
+    assert_eq!(moves.len(), 2);
     assert!(moves
         .iter()
         .all(|mov| matches!(mov, super::DescriptorScalarMoveUnion::PillarChange(_))));
+}
+
+#[test]
+fn descriptor_pillar_change_intersects_entity_domains() {
+    let descriptor = restricted_descriptor();
+    let plan = RestrictedPlan {
+        workers: vec![Worker, Worker, Worker],
+        tasks: vec![
+            RestrictedTask {
+                worker_idx: Some(0),
+                allowed_workers: vec![0, 1, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(0),
+                allowed_workers: vec![0, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(1),
+                allowed_workers: vec![0, 1, 2],
+            },
+        ],
+        score: None,
+    };
+    let mut director = ScoreDirector::simple(plan, descriptor.clone(), |s, _| s.tasks.len());
+    let config = MoveSelectorConfig::PillarChangeMoveSelector(PillarChangeMoveConfig {
+        minimum_sub_pillar_size: 0,
+        maximum_sub_pillar_size: 0,
+        target: VariableTargetConfig::default(),
+    });
+
+    let selector = build_descriptor_move_selector::<RestrictedPlan>(Some(&config), &descriptor);
+    let moves: Vec<_> = selector.iter_moves(&director).collect();
+
+    assert_eq!(moves.len(), 1);
+    assert!(moves[0].is_doable(&director));
+    moves[0].do_move(&mut director);
+    assert_eq!(director.working_solution().tasks[0].worker_idx, Some(2));
+    assert_eq!(director.working_solution().tasks[1].worker_idx, Some(2));
+}
+
+#[test]
+fn descriptor_pillar_swap_prunes_illegal_partners() {
+    let descriptor = restricted_descriptor();
+    let plan = RestrictedPlan {
+        workers: vec![Worker, Worker, Worker],
+        tasks: vec![
+            RestrictedTask {
+                worker_idx: Some(0),
+                allowed_workers: vec![0, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(0),
+                allowed_workers: vec![0, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(1),
+                allowed_workers: vec![1, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(1),
+                allowed_workers: vec![1, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(2),
+                allowed_workers: vec![0, 1, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(2),
+                allowed_workers: vec![0, 1, 2],
+            },
+        ],
+        score: None,
+    };
+    let director = ScoreDirector::simple(plan, descriptor.clone(), |s, _| s.tasks.len());
+    let config = MoveSelectorConfig::PillarSwapMoveSelector(PillarSwapMoveConfig {
+        minimum_sub_pillar_size: 0,
+        maximum_sub_pillar_size: 0,
+        target: VariableTargetConfig::default(),
+    });
+
+    let selector = build_descriptor_move_selector::<RestrictedPlan>(Some(&config), &descriptor);
+    let moves: Vec<_> = selector.iter_moves(&director).collect();
+
+    assert_eq!(moves.len(), 2);
+    assert!(moves.iter().all(|mov| mov.is_doable(&director)));
+}
+
+#[test]
+fn descriptor_manual_illegal_pillar_moves_are_not_doable() {
+    let descriptor = restricted_descriptor();
+    let plan = RestrictedPlan {
+        workers: vec![Worker, Worker, Worker],
+        tasks: vec![
+            RestrictedTask {
+                worker_idx: Some(0),
+                allowed_workers: vec![0, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(0),
+                allowed_workers: vec![0, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(1),
+                allowed_workers: vec![1, 2],
+            },
+            RestrictedTask {
+                worker_idx: Some(1),
+                allowed_workers: vec![1, 2],
+            },
+        ],
+        score: None,
+    };
+    let director = ScoreDirector::simple(plan, descriptor.clone(), |s, _| s.tasks.len());
+    let binding = super::bindings::collect_bindings(&descriptor)
+        .into_iter()
+        .next()
+        .expect("restricted descriptor binding");
+
+    let illegal_change =
+        super::DescriptorPillarChangeMove::new(binding.clone(), vec![0, 1], Some(1), descriptor.clone());
+    let illegal_swap =
+        super::DescriptorPillarSwapMove::new(binding, vec![0, 1], vec![2, 3], descriptor);
+
+    assert!(!illegal_change.is_doable(&director));
+    assert!(!illegal_swap.is_doable(&director));
 }
 
 #[test]

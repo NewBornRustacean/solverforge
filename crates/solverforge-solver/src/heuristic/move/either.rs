@@ -1,8 +1,7 @@
-/* EitherMove - a monomorphized union of ChangeMove and SwapMove.
+/* ScalarMoveUnion - a monomorphized union of the canonical scalar move family.
 
-This allows local search to use both move types without trait-object dispatch.
-The construction phase uses ChangeMove directly, while local search uses
-EitherMove<S, V> = ChangeMove | SwapMove.
+This allows local search to combine scalar change, swap, pillar, ruin-recreate,
+and cartesian-composite moves without trait-object dispatch.
 */
 
 use std::fmt::Debug;
@@ -10,38 +9,60 @@ use std::fmt::Debug;
 use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::Director;
 
-use super::{ChangeMove, Move, SwapMove};
+use super::{
+    ChangeMove, Move, MoveTabuSignature, PillarChangeMove, PillarSwapMove, RuinRecreateMove,
+    SequentialCompositeMove, SwapMove,
+};
 
-/// A monomorphized union of `ChangeMove` and `SwapMove`.
+/// A monomorphized union of the canonical scalar move family.
 ///
 /// Implements `Move<S>` by delegating to the inner variant.
 /// `Copy` when `V: Copy`, avoiding heap allocation in the move selector hot path.
-pub enum EitherMove<S, V> {
+#[allow(clippy::large_enum_variant)]
+pub enum ScalarMoveUnion<S, V> {
     Change(ChangeMove<S, V>),
     Swap(SwapMove<S, V>),
+    PillarChange(PillarChangeMove<S, V>),
+    PillarSwap(PillarSwapMove<S, V>),
+    RuinRecreate(RuinRecreateMove<S>),
+    Composite(SequentialCompositeMove<S, ScalarMoveUnion<S, V>>),
 }
 
-impl<S, V: Clone> Clone for EitherMove<S, V> {
+impl<S, V> Clone for ScalarMoveUnion<S, V>
+where
+    S: PlanningSolution,
+    V: Clone + PartialEq + Send + Sync + Debug + 'static,
+{
     fn clone(&self) -> Self {
         match self {
             Self::Change(m) => Self::Change(m.clone()),
             Self::Swap(m) => Self::Swap(*m),
+            Self::PillarChange(m) => Self::PillarChange(m.clone()),
+            Self::PillarSwap(m) => Self::PillarSwap(m.clone()),
+            Self::RuinRecreate(m) => Self::RuinRecreate(m.clone()),
+            Self::Composite(m) => Self::Composite(m.clone()),
         }
     }
 }
 
-impl<S, V: Copy> Copy for EitherMove<S, V> {}
-
-impl<S, V: Debug> Debug for EitherMove<S, V> {
+impl<S, V> Debug for ScalarMoveUnion<S, V>
+where
+    S: PlanningSolution,
+    V: Clone + PartialEq + Send + Sync + Debug + 'static,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Change(m) => m.fmt(f),
             Self::Swap(m) => m.fmt(f),
+            Self::PillarChange(m) => m.fmt(f),
+            Self::PillarSwap(m) => m.fmt(f),
+            Self::RuinRecreate(m) => m.fmt(f),
+            Self::Composite(m) => m.fmt(f),
         }
     }
 }
 
-impl<S, V> Move<S> for EitherMove<S, V>
+impl<S, V> Move<S> for ScalarMoveUnion<S, V>
 where
     S: PlanningSolution,
     V: Clone + PartialEq + Send + Sync + Debug + 'static,
@@ -50,6 +71,10 @@ where
         match self {
             Self::Change(m) => m.is_doable(score_director),
             Self::Swap(m) => m.is_doable(score_director),
+            Self::PillarChange(m) => m.is_doable(score_director),
+            Self::PillarSwap(m) => m.is_doable(score_director),
+            Self::RuinRecreate(m) => m.is_doable(score_director),
+            Self::Composite(m) => m.is_doable(score_director),
         }
     }
 
@@ -57,6 +82,10 @@ where
         match self {
             Self::Change(m) => m.do_move(score_director),
             Self::Swap(m) => m.do_move(score_director),
+            Self::PillarChange(m) => m.do_move(score_director),
+            Self::PillarSwap(m) => m.do_move(score_director),
+            Self::RuinRecreate(m) => m.do_move(score_director),
+            Self::Composite(m) => m.do_move(score_director),
         }
     }
 
@@ -64,6 +93,10 @@ where
         match self {
             Self::Change(m) => m.descriptor_index(),
             Self::Swap(m) => m.descriptor_index(),
+            Self::PillarChange(m) => m.descriptor_index(),
+            Self::PillarSwap(m) => m.descriptor_index(),
+            Self::RuinRecreate(m) => m.descriptor_index(),
+            Self::Composite(m) => m.descriptor_index(),
         }
     }
 
@@ -71,6 +104,10 @@ where
         match self {
             Self::Change(m) => m.entity_indices(),
             Self::Swap(m) => m.entity_indices(),
+            Self::PillarChange(m) => m.entity_indices(),
+            Self::PillarSwap(m) => m.entity_indices(),
+            Self::RuinRecreate(m) => m.entity_indices(),
+            Self::Composite(m) => m.entity_indices(),
         }
     }
 
@@ -78,6 +115,21 @@ where
         match self {
             Self::Change(m) => m.variable_name(),
             Self::Swap(m) => m.variable_name(),
+            Self::PillarChange(m) => m.variable_name(),
+            Self::PillarSwap(m) => m.variable_name(),
+            Self::RuinRecreate(m) => m.variable_name(),
+            Self::Composite(m) => m.variable_name(),
+        }
+    }
+
+    fn tabu_signature<D: Director<S>>(&self, score_director: &D) -> MoveTabuSignature {
+        match self {
+            Self::Change(m) => m.tabu_signature(score_director),
+            Self::Swap(m) => m.tabu_signature(score_director),
+            Self::PillarChange(m) => m.tabu_signature(score_director),
+            Self::PillarSwap(m) => m.tabu_signature(score_director),
+            Self::RuinRecreate(m) => m.tabu_signature(score_director),
+            Self::Composite(m) => m.tabu_signature(score_director),
         }
     }
 }

@@ -19,7 +19,7 @@ triggers on these tuples but the pattern is architecturally required.
 pub mod test_utils;
 
 pub mod builder;
-pub mod descriptor_standard;
+pub mod descriptor_scalar;
 pub mod heuristic;
 pub mod manager;
 pub mod phase;
@@ -37,9 +37,11 @@ pub use builder::{
     Neighborhood, NeighborhoodLeaf, NeighborhoodMove, ScalarVariableContext, Selector, ValueSource,
     VariableContext, Vnd,
 };
-pub use descriptor_standard::{
+pub use descriptor_scalar::{
     build_descriptor_construction, build_descriptor_move_selector, descriptor_has_bindings,
-    DescriptorConstruction, DescriptorEitherMove, DescriptorLeafSelector,
+    DescriptorConstruction, DescriptorFlatSelector, DescriptorLeafSelector,
+    DescriptorPillarChangeMove, DescriptorPillarSwapMove, DescriptorRuinRecreateMove,
+    DescriptorScalarMoveUnion, DescriptorSelector, DescriptorSelectorNode,
 };
 pub use heuristic::{
     // K-opt reconnection patterns
@@ -112,12 +114,11 @@ pub use phase::{
         SimpleDecider, SoftScoreBounder,
     },
     localsearch::{
-        AcceptedCountForager, Acceptor, AcceptorType, BestScoreForager,
-        DiversifiedLateAcceptanceAcceptor, EntityTabuAcceptor, FirstAcceptedForager,
-        FirstBestScoreImprovingForager, FirstLastStepScoreImprovingForager, GreatDelugeAcceptor,
-        HillClimbingAcceptor, LateAcceptanceAcceptor, LocalSearchConfig, LocalSearchForager,
-        LocalSearchPhase, MoveTabuAcceptor, SimulatedAnnealingAcceptor,
-        StepCountingHillClimbingAcceptor, TabuSearchAcceptor, ValueTabuAcceptor,
+        AcceptedCountForager, Acceptor, BestScoreForager, DiversifiedLateAcceptanceAcceptor,
+        FirstAcceptedForager, FirstBestScoreImprovingForager, FirstLastStepScoreImprovingForager,
+        GreatDelugeAcceptor, HillClimbingAcceptor, LateAcceptanceAcceptor, LocalSearchForager,
+        LocalSearchPhase, SimulatedAnnealingAcceptor, StepCountingHillClimbingAcceptor,
+        TabuSearchAcceptor,
     },
     partitioned::{
         ChildPhases, FunctionalPartitioner, PartitionedSearchConfig, PartitionedSearchPhase,
