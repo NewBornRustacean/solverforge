@@ -448,6 +448,8 @@ where
     }
 
     fn size<D: Director<S>>(&self, score_director: &D) -> usize {
+        // Preview can prune or expand rows when the right selector depends on
+        // post-left state; size must remain pure and never open child cursors.
         self.left
             .size(score_director)
             .saturating_mul(self.right.size(score_director))

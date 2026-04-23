@@ -494,7 +494,6 @@ fn cartesian_scalar_selector_builds_composite_moves() {
     assert!(selector.size(&director) <= left.size(&director) * right.size(&director));
     assert!(matches!(&neighborhoods[0], Neighborhood::Cartesian(_)));
     let moves: Vec<_> = selector.open_cursor(&director).collect();
-    assert!(moves.len() <= selector.size(&director));
     assert!(moves
         .iter()
         .all(|mov| matches!(mov, NeighborhoodMove::Composite(_))));
@@ -532,7 +531,6 @@ fn cartesian_list_selector_builds_composite_moves() {
     let moves: Vec<_> = selector.open_cursor(&director).collect();
 
     assert_eq!(neighborhoods.len(), 1);
-    assert!(moves.len() <= selector.size(&director));
     assert!(!moves.is_empty());
     assert!(matches!(&neighborhoods[0], Neighborhood::Cartesian(_)));
     assert!(moves
@@ -573,7 +571,6 @@ fn cartesian_mixed_selector_supports_limited_children() {
     let moves: Vec<_> = selector.open_cursor(&director).collect();
 
     assert!(selector.size(&director) <= left.size(&director) * right.size(&director));
-    assert!(moves.len() <= selector.size(&director));
     assert!(moves
         .iter()
         .all(|mov| matches!(mov, NeighborhoodMove::Composite(_))));
