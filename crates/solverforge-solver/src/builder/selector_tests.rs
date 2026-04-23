@@ -490,14 +490,14 @@ fn cartesian_scalar_selector_builds_composite_moves() {
     let right = build_move_selector(Some(&swap), &scalar_only_model(), None);
 
     assert_eq!(neighborhoods.len(), 1);
-    assert_eq!(
-        selector.size(&director),
-        left.size(&director) * right.size(&director)
-    );
+    assert!(selector.size(&director) <= left.size(&director) * right.size(&director));
     assert!(matches!(&neighborhoods[0], Neighborhood::Cartesian(_)));
-    assert!(selector
-        .open_cursor(&director)
+    let moves: Vec<_> = selector.open_cursor(&director).collect();
+    assert_eq!(moves.len(), selector.size(&director));
+    assert!(moves
+        .iter()
         .all(|mov| matches!(mov, NeighborhoodMove::Composite(_))));
+    assert!(moves.iter().all(|mov| mov.is_doable(&director)));
 }
 
 #[test]
@@ -537,6 +537,7 @@ fn cartesian_list_selector_builds_composite_moves() {
     assert!(moves
         .iter()
         .all(|mov| matches!(mov, NeighborhoodMove::Composite(_))));
+    assert!(moves.iter().all(|mov| mov.is_doable(&director)));
 }
 
 #[test]
@@ -570,14 +571,12 @@ fn cartesian_mixed_selector_supports_limited_children() {
     let right = build_move_selector(Some(&list_reverse), &mixed_model(), None);
     let moves: Vec<_> = selector.open_cursor(&director).collect();
 
-    assert_eq!(
-        selector.size(&director),
-        left.size(&director) * right.size(&director)
-    );
+    assert!(selector.size(&director) <= left.size(&director) * right.size(&director));
     assert_eq!(moves.len(), selector.size(&director));
     assert!(moves
         .iter()
         .all(|mov| matches!(mov, NeighborhoodMove::Composite(_))));
+    assert!(moves.iter().all(|mov| mov.is_doable(&director)));
     assert!(moves
         .iter()
         .all(|mov| mov.variable_name() == "cartesian_product"));

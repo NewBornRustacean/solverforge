@@ -198,9 +198,15 @@ impl<S: PlanningSolution> Director<S> for PreviewDirector<'_, S> {
         self.working_solution.clone()
     }
 
-    fn before_variable_changed(&mut self, _descriptor_index: usize, _entity_index: usize) {}
+    fn before_variable_changed(&mut self, _descriptor_index: usize, _entity_index: usize) {
+        self.working_solution.set_score(None);
+    }
 
-    fn after_variable_changed(&mut self, _descriptor_index: usize, _entity_index: usize) {}
+    fn after_variable_changed(&mut self, descriptor_index: usize, entity_index: usize) {
+        self.working_solution
+            .update_entity_shadows(descriptor_index, entity_index);
+        self.working_solution.set_score(None);
+    }
 
     fn entity_count(&self, descriptor_index: usize) -> Option<usize> {
         self.entity_counts.get(descriptor_index).copied().flatten()
@@ -371,6 +377,10 @@ where
                 continue;
             };
 
+            if !first_doable {
+                continue;
+            }
+
             let second_start = state.second_arena.len();
             state.second_arena.extend(self.right.open_cursor(&preview));
             let second_end = state.second_arena.len();
@@ -379,7 +389,9 @@ where
                 let Some(second_move) = state.second_arena.get(second_index) else {
                     continue;
                 };
-                let second_doable = second_move.is_doable(&preview);
+                if !second_move.is_doable(&preview) {
+                    continue;
+                }
                 let second_signature = second_move.tabu_signature(&preview);
                 let mut entity_indices = smallvec::SmallVec::<[usize; 8]>::new();
                 append_unique_entities(&mut entity_indices, &first_entity_indices);
@@ -390,8 +402,6 @@ where
                     second_index,
                     first_arena_addr,
                     second_arena_addr,
-                    first_doable,
-                    second_doable,
                     first_descriptor_index,
                     entity_indices,
                     if first_variable_name == second_move.variable_name() {

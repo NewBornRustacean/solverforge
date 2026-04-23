@@ -1,6 +1,6 @@
 use super::*;
-use crate::heuristic::r#move::ChangeMove;
-use crate::heuristic::selector::ChangeMoveSelector;
+use crate::heuristic::r#move::{ChangeMove, Move, ScalarMoveUnion};
+use crate::heuristic::selector::{ChangeMoveSelector, MoveSelector};
 use solverforge_core::domain::{EntityCollectionExtractor, EntityDescriptor, SolutionDescriptor};
 use solverforge_core::score::SoftScore;
 use solverforge_scoring::ScoreDirector;
@@ -10,6 +10,7 @@ use std::any::TypeId;
 struct Task {
     x: Option<i32>,
     y: Option<i32>,
+    shadow_y_target: Option<i32>,
 }
 
 #[derive(Clone, Debug)]
@@ -27,6 +28,22 @@ impl PlanningSolution for Sol {
 
     fn set_score(&mut self, score: Option<Self::Score>) {
         self.score = score;
+    }
+
+    fn update_entity_shadows(&mut self, descriptor_index: usize, entity_index: usize) {
+        if descriptor_index != 0 {
+            return;
+        }
+
+        if let Some(task) = self.tasks.get_mut(entity_index) {
+            task.shadow_y_target = task.x.map(|value| value + 10);
+        }
+    }
+
+    fn update_all_shadows(&mut self) {
+        for entity_index in 0..self.tasks.len() {
+            self.update_entity_shadows(0, entity_index);
+        }
     }
 }
 
@@ -59,7 +76,8 @@ fn set_y(s: &mut Sol, i: usize, v: Option<i32>) {
 }
 
 fn create_director(tasks: Vec<Task>) -> ScoreDirector<Sol, ()> {
-    let solution = Sol { tasks, score: None };
+    let mut solution = Sol { tasks, score: None };
+    solution.update_all_shadows();
     let extractor = Box::new(EntityCollectionExtractor::new(
         "Task",
         "tasks",
@@ -72,11 +90,64 @@ fn create_director(tasks: Vec<Task>) -> ScoreDirector<Sol, ()> {
     ScoreDirector::simple(solution, descriptor, |s, _| s.tasks.len())
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TestSelector {
+    build: fn(&Sol) -> Vec<ScalarMoveUnion<Sol, i32>>,
+}
+
+impl MoveSelector<Sol, ScalarMoveUnion<Sol, i32>> for TestSelector {
+    fn open_cursor<'a, D: solverforge_scoring::Director<Sol>>(
+        &'a self,
+        score_director: &D,
+    ) -> impl Iterator<Item = ScalarMoveUnion<Sol, i32>> + 'a {
+        (self.build)(score_director.working_solution()).into_iter()
+    }
+
+    fn size<D: solverforge_scoring::Director<Sol>>(&self, score_director: &D) -> usize {
+        (self.build)(score_director.working_solution()).len()
+    }
+}
+
+fn wrap_scalar_composite(
+    mov: crate::heuristic::r#move::SequentialCompositeMove<Sol, ScalarMoveUnion<Sol, i32>>,
+) -> ScalarMoveUnion<Sol, i32> {
+    ScalarMoveUnion::Composite(mov)
+}
+
+fn x_move(value: i32) -> ScalarMoveUnion<Sol, i32> {
+    ScalarMoveUnion::Change(ChangeMove::new(0, Some(value), get_x, set_x, "x", 0))
+}
+
+fn y_move(value: i32) -> ScalarMoveUnion<Sol, i32> {
+    ScalarMoveUnion::Change(ChangeMove::new(0, Some(value), get_y, set_y, "y", 0))
+}
+
+fn left_x_to_one_then_two(_solution: &Sol) -> Vec<ScalarMoveUnion<Sol, i32>> {
+    vec![x_move(1), x_move(2)]
+}
+
+fn right_x_to_one(_solution: &Sol) -> Vec<ScalarMoveUnion<Sol, i32>> {
+    vec![x_move(1)]
+}
+
+fn right_y_to_ten(_solution: &Sol) -> Vec<ScalarMoveUnion<Sol, i32>> {
+    vec![y_move(10)]
+}
+
+fn right_shadow_backed_y(solution: &Sol) -> Vec<ScalarMoveUnion<Sol, i32>> {
+    solution.tasks[0]
+        .shadow_y_target
+        .map(y_move)
+        .into_iter()
+        .collect()
+}
+
 #[test]
 fn cartesian_product_arena_yields_all_pairs() {
     let director = create_director(vec![Task {
         x: Some(0),
         y: Some(0),
+        shadow_y_target: None,
     }]);
 
     let x_selector = ChangeMoveSelector::simple(get_x, set_x, 0, "x", vec![1, 2]);
@@ -98,6 +169,7 @@ fn reset_clears_both_arenas() {
     let director = create_director(vec![Task {
         x: Some(0),
         y: Some(0),
+        shadow_y_target: None,
     }]);
 
     let x_selector = ChangeMoveSelector::simple(get_x, set_x, 0, "x", vec![1, 2]);
@@ -113,4 +185,93 @@ fn reset_clears_both_arenas() {
     arena.reset();
     assert!(arena.is_empty());
     assert_eq!(arena.len(), 0);
+}
+
+#[test]
+fn cartesian_product_skips_rows_with_illegal_left_moves() {
+    let mut director = create_director(vec![Task {
+        x: Some(1),
+        y: Some(0),
+        shadow_y_target: None,
+    }]);
+    let selector = CartesianProductSelector::new(
+        TestSelector {
+            build: left_x_to_one_then_two,
+        },
+        TestSelector {
+            build: right_y_to_ten,
+        },
+        wrap_scalar_composite,
+    );
+
+    let moves: Vec<_> = selector.open_cursor(&director).collect();
+
+    assert_eq!(selector.size(&director), 1);
+    assert_eq!(moves.len(), 1);
+    assert!(moves.iter().all(|mov| mov.is_doable(&director)));
+
+    moves[0].do_move(&mut director);
+    assert_eq!(get_x(director.working_solution(), 0), Some(2));
+    assert_eq!(get_y(director.working_solution(), 0), Some(10));
+}
+
+#[test]
+fn cartesian_product_skips_pairs_with_illegal_right_moves() {
+    let mut director = create_director(vec![Task {
+        x: Some(0),
+        y: Some(0),
+        shadow_y_target: None,
+    }]);
+    let selector = CartesianProductSelector::new(
+        TestSelector {
+            build: left_x_to_one_then_two,
+        },
+        TestSelector {
+            build: right_x_to_one,
+        },
+        wrap_scalar_composite,
+    );
+
+    let moves: Vec<_> = selector.open_cursor(&director).collect();
+
+    assert_eq!(selector.size(&director), 1);
+    assert_eq!(moves.len(), 1);
+    assert!(matches!(moves[0], ScalarMoveUnion::Composite(_)));
+    assert!(moves.iter().all(|mov| mov.is_doable(&director)));
+
+    moves[0].do_move(&mut director);
+    assert_eq!(get_x(director.working_solution(), 0), Some(1));
+}
+
+#[test]
+fn cartesian_product_preview_updates_shadows_before_building_right_row() {
+    let mut director = create_director(vec![Task {
+        x: Some(1),
+        y: Some(0),
+        shadow_y_target: None,
+    }]);
+    let selector = CartesianProductSelector::new(
+        TestSelector {
+            build: |_: &Sol| vec![x_move(2)],
+        },
+        TestSelector {
+            build: right_shadow_backed_y,
+        },
+        wrap_scalar_composite,
+    );
+
+    let moves: Vec<_> = selector.open_cursor(&director).collect();
+
+    assert_eq!(selector.size(&director), 1);
+    assert_eq!(moves.len(), 1);
+    assert!(moves.iter().all(|mov| mov.is_doable(&director)));
+
+    let _ = director.calculate_score();
+    moves[0].do_move(&mut director);
+    assert_eq!(get_x(director.working_solution(), 0), Some(2));
+    assert_eq!(get_y(director.working_solution(), 0), Some(12));
+    assert_eq!(
+        director.working_solution().tasks[0].shadow_y_target,
+        Some(12)
+    );
 }

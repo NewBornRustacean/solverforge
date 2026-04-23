@@ -69,7 +69,7 @@ where
         let m2 = arena_2.get(self.index_2);
 
         match (m1, m2) {
-            (Some(m1), Some(m2)) => m1.is_doable(score_director) || m2.is_doable(score_director),
+            (Some(m1), Some(m2)) => m1.is_doable(score_director) && m2.is_doable(score_director),
             _ => false,
         }
     }
@@ -81,12 +81,15 @@ where
         arena_2: &MoveArena<M2>,
         score_director: &mut D,
     ) {
-        if let Some(m1) = arena_1.get(self.index_1) {
-            m1.do_move(score_director);
-        }
-        if let Some(m2) = arena_2.get(self.index_2) {
-            m2.do_move(score_director);
-        }
+        let m1 = arena_1
+            .get(self.index_1)
+            .expect("composite move first arena index must remain valid");
+        let m2 = arena_2
+            .get(self.index_2)
+            .expect("composite move second arena index must remain valid");
+
+        m1.do_move(score_director);
+        m2.do_move(score_director);
     }
 }
 
@@ -133,8 +136,6 @@ pub struct SequentialCompositeMove<S, M> {
     second_index: usize,
     first_arena_addr: usize,
     second_arena_addr: usize,
-    first_doable: bool,
-    second_doable: bool,
     descriptor_index: usize,
     entity_indices: SmallVec<[usize; 8]>,
     variable_name: &'static str,
@@ -158,8 +159,6 @@ impl<S, M> SequentialCompositeMove<S, M> {
         second_index: usize,
         first_arena_addr: usize,
         second_arena_addr: usize,
-        first_doable: bool,
-        second_doable: bool,
         descriptor_index: usize,
         entity_indices: SmallVec<[usize; 8]>,
         variable_name: &'static str,
@@ -170,8 +169,6 @@ impl<S, M> SequentialCompositeMove<S, M> {
             second_index,
             first_arena_addr,
             second_arena_addr,
-            first_doable,
-            second_doable,
             descriptor_index,
             entity_indices,
             variable_name,
@@ -210,8 +207,6 @@ where
             second_index: self.second_index,
             first_arena_addr: self.first_arena_addr,
             second_arena_addr: self.second_arena_addr,
-            first_doable: self.first_doable,
-            second_doable: self.second_doable,
             descriptor_index: self.descriptor_index,
             entity_indices: self.entity_indices.clone(),
             variable_name: self.variable_name,
@@ -230,8 +225,6 @@ where
         f.debug_struct("SequentialCompositeMove")
             .field("first_index", &self.first_index)
             .field("second_index", &self.second_index)
-            .field("first_doable", &self.first_doable)
-            .field("second_doable", &self.second_doable)
             .field("descriptor_index", &self.descriptor_index)
             .field("variable_name", &self.variable_name)
             .field("entity_indices", &self.entity_indices)
@@ -245,20 +238,24 @@ where
     M: Move<S>,
 {
     fn is_doable<D: Director<S>>(&self, _score_director: &D) -> bool {
-        self.first_doable || self.second_doable
+        debug_assert!(
+            self.first_move().is_some() && self.second_move().is_some(),
+            "cartesian product must emit only fully doable composite moves"
+        );
+
+        true
     }
 
     fn do_move<D: Director<S>>(&self, score_director: &mut D) {
-        if self.first_doable {
-            if let Some(first) = self.first_move() {
-                first.do_move(score_director);
-            }
-        }
-        if self.second_doable {
-            if let Some(second) = self.second_move() {
-                second.do_move(score_director);
-            }
-        }
+        let first = self
+            .first_move()
+            .expect("sequential composite first move must remain valid");
+        let second = self
+            .second_move()
+            .expect("sequential composite second move must remain valid");
+
+        first.do_move(score_director);
+        second.do_move(score_director);
     }
 
     fn descriptor_index(&self) -> usize {
