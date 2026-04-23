@@ -271,7 +271,7 @@ where
 /// assigning the "weakest" or least constraining values first.
 pub struct WeakestFitForager<S, M> {
     // Function to evaluate strength of a move.
-    strength_fn: fn(&M) -> i64,
+    strength_fn: fn(&M, &S) -> i64,
     _phantom: PhantomData<fn() -> S>,
 }
 
@@ -294,17 +294,22 @@ impl<S, M> WeakestFitForager<S, M> {
     ///
     /// The strength function evaluates how "strong" a move is. The forager
     /// picks the move with the minimum strength value.
-    pub fn new(strength_fn: fn(&M) -> i64) -> Self {
+    pub fn new(strength_fn: fn(&M, &S) -> i64) -> Self {
         Self {
             strength_fn,
             _phantom: PhantomData,
         }
+    }
+
+    pub(crate) fn strength(&self, mov: &M, solution: &S) -> i64 {
+        (self.strength_fn)(mov, solution)
     }
 }
 
 impl<S, M> ConstructionForager<S, M> for WeakestFitForager<S, M>
 where
     S: PlanningSolution,
+    S::Score: Score,
     M: Move<S>,
 {
     fn pick_move_index<D: Director<S>>(
@@ -320,7 +325,7 @@ where
                 continue;
             }
 
-            let strength = (self.strength_fn)(m);
+            let strength = self.strength(m, score_director.working_solution());
 
             let is_weaker = match min_strength {
                 None => true,
@@ -333,9 +338,21 @@ where
             }
         }
 
-        best_idx
-            .map(ConstructionChoice::Select)
-            .unwrap_or(ConstructionChoice::KeepCurrent)
+        let Some(best_idx) = best_idx else {
+            return ConstructionChoice::KeepCurrent;
+        };
+
+        if !placement.keep_current_legal() {
+            return ConstructionChoice::Select(best_idx);
+        }
+
+        let baseline_score = score_director.calculate_score();
+        let candidate_score = evaluate_trial_move(score_director, &placement.moves[best_idx]);
+        if candidate_score > baseline_score {
+            ConstructionChoice::Select(best_idx)
+        } else {
+            ConstructionChoice::KeepCurrent
+        }
     }
 }
 
@@ -346,7 +363,7 @@ where
 /// assigning the "strongest" or most constraining values first.
 pub struct StrongestFitForager<S, M> {
     // Function to evaluate strength of a move.
-    strength_fn: fn(&M) -> i64,
+    strength_fn: fn(&M, &S) -> i64,
     _phantom: PhantomData<fn() -> S>,
 }
 
@@ -369,17 +386,22 @@ impl<S, M> StrongestFitForager<S, M> {
     ///
     /// The strength function evaluates how "strong" a move is. The forager
     /// picks the move with the maximum strength value.
-    pub fn new(strength_fn: fn(&M) -> i64) -> Self {
+    pub fn new(strength_fn: fn(&M, &S) -> i64) -> Self {
         Self {
             strength_fn,
             _phantom: PhantomData,
         }
+    }
+
+    pub(crate) fn strength(&self, mov: &M, solution: &S) -> i64 {
+        (self.strength_fn)(mov, solution)
     }
 }
 
 impl<S, M> ConstructionForager<S, M> for StrongestFitForager<S, M>
 where
     S: PlanningSolution,
+    S::Score: Score,
     M: Move<S>,
 {
     fn pick_move_index<D: Director<S>>(
@@ -395,7 +417,7 @@ where
                 continue;
             }
 
-            let strength = (self.strength_fn)(m);
+            let strength = self.strength(m, score_director.working_solution());
 
             let is_stronger = match max_strength {
                 None => true,
@@ -408,12 +430,23 @@ where
             }
         }
 
-        best_idx
-            .map(ConstructionChoice::Select)
-            .unwrap_or(ConstructionChoice::KeepCurrent)
+        let Some(best_idx) = best_idx else {
+            return ConstructionChoice::KeepCurrent;
+        };
+
+        if !placement.keep_current_legal() {
+            return ConstructionChoice::Select(best_idx);
+        }
+
+        let baseline_score = score_director.calculate_score();
+        let candidate_score = evaluate_trial_move(score_director, &placement.moves[best_idx]);
+        if candidate_score > baseline_score {
+            ConstructionChoice::Select(best_idx)
+        } else {
+            ConstructionChoice::KeepCurrent
+        }
     }
 }
 
 #[cfg(test)]
-#[path = "forager_tests.rs"]
 mod tests;

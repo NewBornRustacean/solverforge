@@ -18,7 +18,7 @@ use crate::phase::construction::decision::{
 use crate::phase::construction::evaluation::evaluate_trial_move;
 use crate::phase::construction::{
     BestFitForager, ConstructionChoice, ConstructionForager, EntityPlacer, FirstFeasibleForager,
-    FirstFitForager, Placement,
+    FirstFitForager, Placement, StrongestFitForager, WeakestFitForager,
 };
 use crate::phase::control::{
     settle_construction_interrupt, should_interrupt_evaluation, StepInterrupt,
@@ -47,6 +47,7 @@ where
 {
     placer: P,
     forager: Fo,
+    refresh_placements_each_step: bool,
     _phantom: PhantomData<fn() -> (S, M)>,
 }
 
@@ -61,8 +62,14 @@ where
         Self {
             placer,
             forager,
+            refresh_placements_each_step: false,
             _phantom: PhantomData,
         }
+    }
+
+    pub fn with_live_placement_refresh(mut self) -> Self {
+        self.refresh_placements_each_step = true;
+        self
     }
 }
 
@@ -101,19 +108,22 @@ where
             phase_index = phase_index,
         );
 
-        // Get all placements (entities that need values assigned)
-        let placement_generation_started = Instant::now();
-        let placements = filter_completed_scalar_placements(
-            self.placer.get_placements(phase_scope.score_director()),
-            phase_scope.solver_scope(),
-        );
-        let placement_generation_elapsed = placement_generation_started.elapsed();
-        let generated_moves = placements
-            .iter()
-            .map(|placement| u64::try_from(placement.moves.len()).unwrap_or(u64::MAX))
-            .sum();
-        phase_scope.record_generated_batch(generated_moves, placement_generation_elapsed);
-        let mut placements = placements.into_iter();
+        let mut placements = if self.refresh_placements_each_step {
+            None
+        } else {
+            let placement_generation_started = Instant::now();
+            let placements = filter_completed_scalar_placements(
+                self.placer.get_placements(phase_scope.score_director()),
+                phase_scope.solver_scope(),
+            );
+            let placement_generation_elapsed = placement_generation_started.elapsed();
+            let generated_moves = placements
+                .iter()
+                .map(|placement| u64::try_from(placement.moves.len()).unwrap_or(u64::MAX))
+                .sum();
+            phase_scope.record_generated_batch(generated_moves, placement_generation_elapsed);
+            Some(placements.into_iter())
+        };
         let mut pending_placement = None;
 
         loop {
@@ -126,9 +136,31 @@ where
                 break;
             }
 
-            let mut placement = match pending_placement.take().or_else(|| placements.next()) {
-                Some(placement) => placement,
-                None => break,
+            let mut placement = if self.refresh_placements_each_step {
+                let placement_generation_started = Instant::now();
+                let placements = filter_completed_scalar_placements(
+                    self.placer.get_placements(phase_scope.score_director()),
+                    phase_scope.solver_scope(),
+                );
+                let placement_generation_elapsed = placement_generation_started.elapsed();
+                let generated_moves = placements
+                    .iter()
+                    .map(|placement| u64::try_from(placement.moves.len()).unwrap_or(u64::MAX))
+                    .sum();
+                phase_scope.record_generated_batch(generated_moves, placement_generation_elapsed);
+
+                match placements.into_iter().next() {
+                    Some(placement) => placement,
+                    None => break,
+                }
+            } else {
+                match pending_placement
+                    .take()
+                    .or_else(|| placements.as_mut().and_then(Iterator::next))
+                {
+                    Some(placement) => placement,
+                    None => break,
+                }
             };
 
             let mut step_scope = StepScope::new(&mut phase_scope);
@@ -139,7 +171,9 @@ where
                 ConstructionSelection::Interrupted => {
                     match settle_construction_interrupt(&mut step_scope) {
                         StepInterrupt::Restart => {
-                            pending_placement = Some(placement);
+                            if !self.refresh_placements_each_step {
+                                pending_placement = Some(placement);
+                            }
                             continue;
                         }
                         StepInterrupt::TerminatePhase => break,
@@ -274,6 +308,12 @@ where
     }
     if erased.is::<FirstFeasibleForager<S, M>>() {
         return select_first_feasible_index(placement, step_scope);
+    }
+    if let Some(forager) = erased.downcast_ref::<WeakestFitForager<S, M>>() {
+        return select_weakest_fit_index(forager, placement, step_scope);
+    }
+    if let Some(forager) = erased.downcast_ref::<StrongestFitForager<S, M>>() {
+        return select_strongest_fit_index(forager, placement, step_scope);
     }
 
     ConstructionSelection::Selected(
@@ -424,6 +464,121 @@ where
     ))
 }
 
+fn select_weakest_fit_index<S, D, BestCb, M>(
+    forager: &WeakestFitForager<S, M>,
+    placement: &crate::phase::construction::Placement<S, M>,
+    step_scope: &mut StepScope<'_, '_, '_, S, D, BestCb>,
+) -> ConstructionSelection
+where
+    S: PlanningSolution,
+    S::Score: Score,
+    D: Director<S>,
+    BestCb: ProgressCallback<S>,
+    M: Move<S> + 'static,
+{
+    let mut best_idx = None;
+    let mut min_strength = None;
+
+    for (evaluated, (idx, m)) in placement.moves.iter().enumerate().enumerate() {
+        let evaluation_started = Instant::now();
+        if should_interrupt_evaluation(step_scope, evaluated) {
+            return ConstructionSelection::Interrupted;
+        }
+
+        if !m.is_doable(step_scope.score_director()) {
+            step_scope
+                .phase_scope_mut()
+                .record_evaluated_move(evaluation_started.elapsed());
+            continue;
+        }
+
+        let strength = forager.strength(m, step_scope.score_director().working_solution());
+        if min_strength.is_none_or(|best| strength < best) {
+            best_idx = Some(idx);
+            min_strength = Some(strength);
+        }
+
+        step_scope
+            .phase_scope_mut()
+            .record_evaluated_move(evaluation_started.elapsed());
+    }
+
+    let Some(best_idx) = best_idx else {
+        return ConstructionSelection::Selected(ConstructionChoice::KeepCurrent);
+    };
+
+    if !placement.keep_current_legal() {
+        return ConstructionSelection::Selected(ConstructionChoice::Select(best_idx));
+    }
+
+    let baseline_score = step_scope.calculate_score();
+    let score = evaluate_trial_move(step_scope.score_director_mut(), &placement.moves[best_idx]);
+    step_scope.phase_scope_mut().record_score_calculation();
+
+    ConstructionSelection::Selected(if score > baseline_score {
+        ConstructionChoice::Select(best_idx)
+    } else {
+        ConstructionChoice::KeepCurrent
+    })
+}
+
+fn select_strongest_fit_index<S, D, BestCb, M>(
+    forager: &StrongestFitForager<S, M>,
+    placement: &crate::phase::construction::Placement<S, M>,
+    step_scope: &mut StepScope<'_, '_, '_, S, D, BestCb>,
+) -> ConstructionSelection
+where
+    S: PlanningSolution,
+    S::Score: Score,
+    D: Director<S>,
+    BestCb: ProgressCallback<S>,
+    M: Move<S> + 'static,
+{
+    let mut best_idx = None;
+    let mut max_strength = None;
+
+    for (evaluated, (idx, m)) in placement.moves.iter().enumerate().enumerate() {
+        let evaluation_started = Instant::now();
+        if should_interrupt_evaluation(step_scope, evaluated) {
+            return ConstructionSelection::Interrupted;
+        }
+
+        if !m.is_doable(step_scope.score_director()) {
+            step_scope
+                .phase_scope_mut()
+                .record_evaluated_move(evaluation_started.elapsed());
+            continue;
+        }
+
+        let strength = forager.strength(m, step_scope.score_director().working_solution());
+        if max_strength.is_none_or(|best| strength > best) {
+            best_idx = Some(idx);
+            max_strength = Some(strength);
+        }
+
+        step_scope
+            .phase_scope_mut()
+            .record_evaluated_move(evaluation_started.elapsed());
+    }
+
+    let Some(best_idx) = best_idx else {
+        return ConstructionSelection::Selected(ConstructionChoice::KeepCurrent);
+    };
+
+    if !placement.keep_current_legal() {
+        return ConstructionSelection::Selected(ConstructionChoice::Select(best_idx));
+    }
+
+    let baseline_score = step_scope.calculate_score();
+    let score = evaluate_trial_move(step_scope.score_director_mut(), &placement.moves[best_idx]);
+    step_scope.phase_scope_mut().record_score_calculation();
+
+    ConstructionSelection::Selected(if score > baseline_score {
+        ConstructionChoice::Select(best_idx)
+    } else {
+        ConstructionChoice::KeepCurrent
+    })
+}
+
 #[cfg(test)]
-#[path = "phase_tests.rs"]
 mod tests;

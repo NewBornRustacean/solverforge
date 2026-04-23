@@ -38,10 +38,10 @@ pub use builder::{
     VariableContext, Vnd,
 };
 pub use descriptor_scalar::{
-    build_descriptor_construction, build_descriptor_move_selector, descriptor_has_bindings,
-    DescriptorConstruction, DescriptorFlatSelector, DescriptorLeafSelector,
-    DescriptorPillarChangeMove, DescriptorPillarSwapMove, DescriptorRuinRecreateMove,
-    DescriptorScalarMoveUnion, DescriptorSelector, DescriptorSelectorNode,
+    build_descriptor_move_selector, descriptor_has_bindings, DescriptorConstruction,
+    DescriptorFlatSelector, DescriptorLeafSelector, DescriptorPillarChangeMove,
+    DescriptorPillarSwapMove, DescriptorRuinRecreateMove, DescriptorScalarMoveUnion,
+    DescriptorSelector, DescriptorSelectorNode,
 };
 pub use heuristic::{
     // K-opt reconnection patterns

@@ -1,4 +1,3 @@
-use super::*;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -8,62 +7,13 @@ use solverforge_core::domain::{PlanningSolution, SolutionDescriptor};
 use solverforge_core::score::SoftScore;
 use solverforge_scoring::Director;
 
+use super::*;
 use crate::heuristic::r#move::metadata::{hash_str, MoveTabuScope};
-use crate::heuristic::r#move::ChangeMove;
 use crate::heuristic::r#move::{Move, MoveTabuSignature};
 use crate::heuristic::selector::move_selector::{ArenaMoveCursor, MoveCandidateRef, MoveCursor};
-use crate::heuristic::selector::ChangeMoveSelector;
+use crate::heuristic::selector::MoveSelector;
 use crate::manager::SolverTerminalReason;
 use crate::scope::SolverScope;
-use crate::test_utils::{create_nqueens_director, get_queen_row, set_queen_row, NQueensSolution};
-
-type NQueensMove = ChangeMove<NQueensSolution, i64>;
-
-fn create_move_selector(
-    values: Vec<i64>,
-) -> ChangeMoveSelector<
-    NQueensSolution,
-    i64,
-    crate::heuristic::selector::FromSolutionEntitySelector,
-    crate::heuristic::selector::StaticValueSelector<NQueensSolution, i64>,
-> {
-    ChangeMoveSelector::simple(get_queen_row, set_queen_row, 0, "row", values)
-}
-
-#[test]
-fn test_vnd_improves_solution() {
-    let director = create_nqueens_director(&[0, 0, 0, 0]);
-    let mut solver_scope = SolverScope::new(director);
-
-    let initial_score = solver_scope.calculate_score();
-
-    let values: Vec<i64> = (0..4).collect();
-    let mut phase: VndPhase<_, NQueensMove> = VndPhase::new((
-        create_move_selector(values.clone()),
-        create_move_selector(values),
-    ));
-
-    phase.solve(&mut solver_scope);
-
-    let final_score = solver_scope.best_score().copied().unwrap_or(initial_score);
-    assert!(final_score >= initial_score);
-}
-
-#[test]
-fn test_vnd_single_neighborhood() {
-    let director = create_nqueens_director(&[0, 0, 0, 0]);
-    let mut solver_scope = SolverScope::new(director);
-
-    let initial_score = solver_scope.calculate_score();
-
-    let values: Vec<i64> = (0..4).collect();
-    let mut phase: VndPhase<_, NQueensMove> = VndPhase::new((create_move_selector(values),));
-
-    phase.solve(&mut solver_scope);
-
-    let final_score = solver_scope.best_score().copied().unwrap_or(initial_score);
-    assert!(final_score >= initial_score);
-}
 
 #[derive(Clone, Debug)]
 struct InterruptPlan {
@@ -167,8 +117,8 @@ impl Move<InterruptPlan> for InterruptMove {
     fn tabu_signature<D: Director<InterruptPlan>>(&self, _score_director: &D) -> MoveTabuSignature {
         MoveTabuSignature::new(
             MoveTabuScope::new(0, "interrupt_move"),
-            smallvec![hash_str("vnd_interrupt_move")],
-            smallvec![hash_str("vnd_interrupt_move")],
+            smallvec![hash_str("dynamic_vnd_interrupt_move")],
+            smallvec![hash_str("dynamic_vnd_interrupt_move")],
         )
     }
 }
@@ -252,16 +202,15 @@ fn selector_with_non_doable_tail(terminate: Arc<AtomicBool>) -> FlaggingSelector
 }
 
 #[test]
-fn tuple_vnd_polling_advances_through_non_doable_tail_after_cancel_request() {
+fn dynamic_vnd_polling_advances_through_non_doable_tail_after_cancel_request() {
     let terminate = Arc::new(AtomicBool::new(false));
     let director = InterruptDirector::new();
     let mut solver_scope = SolverScope::new(director).with_terminate(Some(terminate.as_ref()));
     solver_scope.start_solving();
 
-    let mut phase = VndPhase::<_, InterruptMove>::new((
+    let mut phase = DynamicVndPhase::<InterruptPlan, InterruptMove, FlaggingSelector>::new(vec![
         selector_with_non_doable_tail(terminate.clone()),
-        selector_with_non_doable_tail(terminate.clone()),
-    ));
+    ]);
     phase.solve(&mut solver_scope);
 
     assert_eq!(

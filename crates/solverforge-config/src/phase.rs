@@ -71,43 +71,48 @@ pub enum ConstructionHeuristicType {
     #[default]
     FirstFit,
 
-    // First fit decreasing (by entity difficulty).
+    // First fit decreasing. Scalar-only; requires `construction_entity_order_key`.
     FirstFitDecreasing,
 
-    // Weakest fit heuristic.
+    // Weakest fit heuristic. Scalar-only; requires `construction_value_order_key`.
     WeakestFit,
 
-    // Weakest fit decreasing.
+    // Weakest fit decreasing. Scalar-only; requires both scalar construction order keys.
     WeakestFitDecreasing,
 
-    // Strongest fit heuristic.
+    // Strongest fit heuristic. Scalar-only; requires `construction_value_order_key`.
     StrongestFit,
 
-    // Strongest fit decreasing.
+    // Strongest fit decreasing. Scalar-only; requires both scalar construction order keys.
     StrongestFitDecreasing,
 
     // Cheapest insertion (greedy, scalar variables).
     CheapestInsertion,
 
-    // Allocate entity from queue.
+    // Allocate entity from queue. Scalar-only; requires `construction_entity_order_key`.
     AllocateEntityFromQueue,
 
-    // Allocate to value from queue.
+    // Allocate to value from queue. Scalar-only; requires `construction_value_order_key`.
     AllocateToValueFromQueue,
 
-    // List round-robin construction: distributes elements evenly across entities.
+    // List round-robin construction: distributes elements evenly across entities and validates the
+    // list construction hook surface before phase build.
     ListRoundRobin,
 
-    // List cheapest insertion: inserts each element at the score-minimizing position.
+    // List cheapest insertion: inserts each element at the score-minimizing position and validates
+    // the list construction hook surface before phase build.
     ListCheapestInsertion,
 
-    // List regret insertion: inserts elements in order of highest placement regret.
+    // List regret insertion: inserts elements in order of highest placement regret and validates
+    // the list construction hook surface before phase build.
     ListRegretInsertion,
 
-    // List Clarke-Wright savings: greedy route merging by savings value.
+    // List Clarke-Wright savings: greedy route merging by savings value; requires the declared
+    // `cw_*` list hooks and validates them before phase build.
     ListClarkeWright,
 
-    // List k-opt: per-route k-opt polishing (k=2 is exact 2-opt).
+    // List k-opt: per-route k-opt polishing (k=2 is exact 2-opt); requires the declared
+    // `k_opt_*` list hooks and validates them before phase build.
     ListKOpt,
 }
 

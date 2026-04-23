@@ -367,5 +367,4 @@ where
 }
 
 #[cfg(test)]
-#[path = "placer_tests.rs"]
 mod tests;

@@ -4,6 +4,7 @@ Builds an initial solution by assigning values to uninitialized
 planning variables one at a time.
 */
 
+mod capabilities;
 mod config;
 mod decision;
 mod engine;
@@ -14,6 +15,7 @@ mod phase;
 mod placer;
 mod slot;
 
+pub(crate) use capabilities::{select_construction_capabilities, ConstructionRoute};
 pub use config::{ConstructionHeuristicConfig, ForagerType};
 pub(crate) use engine::solve_construction;
 pub use forager::{

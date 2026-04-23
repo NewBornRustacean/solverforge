@@ -14,7 +14,10 @@ use solverforge_core::score::SoftScore;
 use solverforge_scoring::{Director, ScoreDirector};
 
 use crate::heuristic::r#move::Move;
-use crate::heuristic::selector::move_selector::MoveSelector;
+use crate::heuristic::selector::decorator::FilteringMoveSelector;
+use crate::heuristic::selector::move_selector::{
+    collect_cursor_indices, MoveCandidateRef, MoveCursor, MoveSelector,
+};
 use crate::phase::localsearch::{FirstAcceptedForager, HillClimbingAcceptor, LocalSearchPhase};
 use crate::phase::Phase;
 use crate::scope::SolverScope;
@@ -37,6 +40,33 @@ struct Plan {
 }
 
 impl PlanningSolution for Plan {
+    type Score = SoftScore;
+
+    fn score(&self) -> Option<Self::Score> {
+        self.score
+    }
+
+    fn set_score(&mut self, score: Option<Self::Score>) {
+        self.score = score;
+    }
+}
+
+#[derive(Clone, Debug)]
+struct QueueTask {
+    worker_idx: Option<usize>,
+    preferred_worker: usize,
+    allowed_workers: Vec<usize>,
+}
+
+#[derive(Clone, Debug)]
+struct QueuePlan {
+    workers: Vec<Worker>,
+    tasks: Vec<QueueTask>,
+    assignment_log: Vec<usize>,
+    score: Option<SoftScore>,
+}
+
+impl PlanningSolution for QueuePlan {
     type Score = SoftScore;
 
     fn score(&self) -> Option<Self::Score> {
@@ -177,6 +207,59 @@ impl solverforge_scoring::Director<Plan> for PlanScoreDirector {
     }
 }
 
+#[derive(Clone, Debug)]
+struct QueueScoreDirector {
+    working_solution: QueuePlan,
+    descriptor: SolutionDescriptor,
+}
+
+impl QueueScoreDirector {
+    fn new(solution: QueuePlan, descriptor: SolutionDescriptor) -> Self {
+        Self {
+            working_solution: solution,
+            descriptor,
+        }
+    }
+}
+
+impl solverforge_scoring::Director<QueuePlan> for QueueScoreDirector {
+    fn working_solution(&self) -> &QueuePlan {
+        &self.working_solution
+    }
+
+    fn working_solution_mut(&mut self) -> &mut QueuePlan {
+        &mut self.working_solution
+    }
+
+    fn calculate_score(&mut self) -> SoftScore {
+        let score = SoftScore::of(0);
+        self.working_solution.set_score(Some(score));
+        score
+    }
+
+    fn solution_descriptor(&self) -> &SolutionDescriptor {
+        &self.descriptor
+    }
+
+    fn clone_working_solution(&self) -> QueuePlan {
+        self.working_solution.clone()
+    }
+
+    fn before_variable_changed(&mut self, _descriptor_index: usize, _entity_index: usize) {}
+
+    fn after_variable_changed(&mut self, _descriptor_index: usize, entity_index: usize) {
+        self.working_solution.assignment_log.push(entity_index);
+    }
+
+    fn entity_count(&self, descriptor_index: usize) -> Option<usize> {
+        (descriptor_index == 0).then_some(self.working_solution.tasks.len())
+    }
+
+    fn total_entity_count(&self) -> Option<usize> {
+        Some(self.working_solution.tasks.len())
+    }
+}
+
 fn get_worker_idx(entity: &dyn Any) -> Option<usize> {
     entity
         .downcast_ref::<Task>()
@@ -189,6 +272,54 @@ fn set_worker_idx(entity: &mut dyn Any, value: Option<usize>) {
         .downcast_mut::<Task>()
         .expect("task expected")
         .worker_idx = value;
+}
+
+fn queue_get_worker_idx(entity: &dyn Any) -> Option<usize> {
+    entity
+        .downcast_ref::<QueueTask>()
+        .expect("queue task expected")
+        .worker_idx
+}
+
+fn queue_set_worker_idx(entity: &mut dyn Any, value: Option<usize>) {
+    entity
+        .downcast_mut::<QueueTask>()
+        .expect("queue task expected")
+        .worker_idx = value;
+}
+
+fn queue_allowed_workers(entity: &dyn Any) -> Vec<usize> {
+    entity
+        .downcast_ref::<QueueTask>()
+        .expect("queue task expected")
+        .allowed_workers
+        .clone()
+}
+
+fn queue_entity_order_key(solution: &dyn Any, entity_index: usize) -> i64 {
+    let plan = solution
+        .downcast_ref::<QueuePlan>()
+        .expect("queue plan expected");
+    let preferred_worker = plan.tasks[entity_index].preferred_worker;
+    plan.tasks
+        .iter()
+        .filter(|task| task.worker_idx == Some(preferred_worker))
+        .count() as i64
+}
+
+fn queue_value_load_key(solution: &dyn Any, _entity_index: usize, value: usize) -> i64 {
+    let plan = solution
+        .downcast_ref::<QueuePlan>()
+        .expect("queue plan expected");
+    plan.tasks
+        .iter()
+        .filter(|task| task.worker_idx == Some(value))
+        .count() as i64
+}
+
+fn queue_value_balance_key(solution: &dyn Any, _entity_index: usize, value: usize) -> i64 {
+    let load = queue_value_load_key(solution, 0, value) + 1;
+    -(load.abs_diff(1) as i64)
 }
 
 fn nearby_worker_value_distance(solution: &dyn Any, entity_index: usize, value: usize) -> f64 {
@@ -226,6 +357,44 @@ fn restricted_allowed_workers(entity: &dyn Any) -> Vec<usize> {
         .expect("restricted task expected")
         .allowed_workers
         .clone()
+}
+
+fn queue_descriptor(
+    entity_order_key: Option<solverforge_core::domain::UsizeConstructionEntityOrderKey>,
+    value_order_key: Option<solverforge_core::domain::UsizeConstructionValueOrderKey>,
+) -> SolutionDescriptor {
+    let mut variable = VariableDescriptor::genuine("worker_idx")
+        .with_allows_unassigned(false)
+        .with_usize_accessors(queue_get_worker_idx, queue_set_worker_idx)
+        .with_entity_value_provider(queue_allowed_workers);
+    if let Some(order_key) = entity_order_key {
+        variable = variable.with_construction_entity_order_key(order_key);
+    }
+    if let Some(order_key) = value_order_key {
+        variable = variable.with_construction_value_order_key(order_key);
+    }
+
+    SolutionDescriptor::new("QueuePlan", TypeId::of::<QueuePlan>())
+        .with_entity(
+            EntityDescriptor::new("QueueTask", TypeId::of::<QueueTask>(), "tasks")
+                .with_extractor(Box::new(EntityCollectionExtractor::new(
+                    "QueueTask",
+                    "tasks",
+                    |s: &QueuePlan| &s.tasks,
+                    |s: &mut QueuePlan| &mut s.tasks,
+                )))
+                .with_variable(variable),
+        )
+        .with_problem_fact(
+            ProblemFactDescriptor::new("Worker", TypeId::of::<Worker>(), "workers").with_extractor(
+                Box::new(EntityCollectionExtractor::new(
+                    "Worker",
+                    "workers",
+                    |s: &QueuePlan| &s.workers,
+                    |s: &mut QueuePlan| &mut s.workers,
+                )),
+            ),
+        )
 }
 
 fn descriptor_with_allows_unassigned(allows_unassigned: bool) -> SolutionDescriptor {
@@ -615,6 +784,226 @@ fn descriptor_reopened_optional_slot_is_revisited_by_later_construction() {
 }
 
 #[test]
+fn descriptor_first_fit_decreasing_reevaluates_entity_order_each_step() {
+    let descriptor = queue_descriptor(Some(queue_entity_order_key), None);
+    let plan = QueuePlan {
+        workers: vec![Worker, Worker],
+        tasks: vec![
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0],
+            },
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 1,
+                allowed_workers: vec![1],
+            },
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0],
+            },
+        ],
+        assignment_log: Vec::new(),
+        score: None,
+    };
+    let director = QueueScoreDirector::new(plan, descriptor.clone());
+    let mut solver_scope = SolverScope::new(director);
+    solver_scope.start_solving();
+
+    let config = ConstructionHeuristicConfig {
+        construction_heuristic_type: ConstructionHeuristicType::FirstFitDecreasing,
+        target: VariableTargetConfig::default(),
+        k: 1,
+        termination: None,
+    };
+    let mut phase = build_descriptor_construction::<QueuePlan>(Some(&config), &descriptor);
+    phase.solve(&mut solver_scope);
+
+    assert_eq!(
+        solver_scope.working_solution().assignment_log,
+        vec![0, 2, 1]
+    );
+}
+
+#[test]
+fn descriptor_allocate_entity_from_queue_reevaluates_entity_order_each_step() {
+    let descriptor = queue_descriptor(Some(queue_entity_order_key), None);
+    let plan = QueuePlan {
+        workers: vec![Worker, Worker],
+        tasks: vec![
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0],
+            },
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0],
+            },
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 1,
+                allowed_workers: vec![1],
+            },
+        ],
+        assignment_log: Vec::new(),
+        score: None,
+    };
+    let director = QueueScoreDirector::new(plan, descriptor.clone());
+    let mut solver_scope = SolverScope::new(director);
+    solver_scope.start_solving();
+
+    let config = ConstructionHeuristicConfig {
+        construction_heuristic_type: ConstructionHeuristicType::AllocateEntityFromQueue,
+        target: VariableTargetConfig::default(),
+        k: 1,
+        termination: None,
+    };
+    let mut phase = build_descriptor_construction::<QueuePlan>(Some(&config), &descriptor);
+    phase.solve(&mut solver_scope);
+
+    assert_eq!(
+        solver_scope.working_solution().assignment_log,
+        vec![0, 2, 1]
+    );
+}
+
+#[test]
+fn descriptor_allocate_to_value_from_queue_uses_live_value_order() {
+    let descriptor = queue_descriptor(None, Some(queue_value_load_key));
+    let plan = QueuePlan {
+        workers: vec![Worker, Worker],
+        tasks: vec![
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0, 1],
+            },
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0, 1],
+            },
+        ],
+        assignment_log: Vec::new(),
+        score: None,
+    };
+    let director = QueueScoreDirector::new(plan, descriptor.clone());
+    let mut solver_scope = SolverScope::new(director);
+    solver_scope.start_solving();
+
+    let config = ConstructionHeuristicConfig {
+        construction_heuristic_type: ConstructionHeuristicType::AllocateToValueFromQueue,
+        target: VariableTargetConfig::default(),
+        k: 1,
+        termination: None,
+    };
+    let mut phase = build_descriptor_construction::<QueuePlan>(Some(&config), &descriptor);
+    phase.solve(&mut solver_scope);
+
+    assert_eq!(
+        solver_scope
+            .working_solution()
+            .tasks
+            .iter()
+            .map(|task| task.worker_idx)
+            .collect::<Vec<_>>(),
+        vec![Some(0), Some(1)]
+    );
+}
+
+#[test]
+fn descriptor_weakest_fit_uses_live_value_order_key() {
+    let descriptor = queue_descriptor(None, Some(queue_value_load_key));
+    let plan = QueuePlan {
+        workers: vec![Worker, Worker],
+        tasks: vec![
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0, 1],
+            },
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0, 1],
+            },
+        ],
+        assignment_log: Vec::new(),
+        score: None,
+    };
+    let director = QueueScoreDirector::new(plan, descriptor.clone());
+    let mut solver_scope = SolverScope::new(director);
+    solver_scope.start_solving();
+
+    let config = ConstructionHeuristicConfig {
+        construction_heuristic_type: ConstructionHeuristicType::WeakestFit,
+        target: VariableTargetConfig::default(),
+        k: 1,
+        termination: None,
+    };
+    let mut phase = build_descriptor_construction::<QueuePlan>(Some(&config), &descriptor);
+    phase.solve(&mut solver_scope);
+
+    assert_eq!(
+        solver_scope
+            .working_solution()
+            .tasks
+            .iter()
+            .map(|task| task.worker_idx)
+            .collect::<Vec<_>>(),
+        vec![Some(0), Some(1)]
+    );
+}
+
+#[test]
+fn descriptor_strongest_fit_uses_live_value_order_key() {
+    let descriptor = queue_descriptor(None, Some(queue_value_balance_key));
+    let plan = QueuePlan {
+        workers: vec![Worker, Worker],
+        tasks: vec![
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0, 1],
+            },
+            QueueTask {
+                worker_idx: None,
+                preferred_worker: 0,
+                allowed_workers: vec![0, 1],
+            },
+        ],
+        assignment_log: Vec::new(),
+        score: None,
+    };
+    let director = QueueScoreDirector::new(plan, descriptor.clone());
+    let mut solver_scope = SolverScope::new(director);
+    solver_scope.start_solving();
+
+    let config = ConstructionHeuristicConfig {
+        construction_heuristic_type: ConstructionHeuristicType::StrongestFit,
+        target: VariableTargetConfig::default(),
+        k: 1,
+        termination: None,
+    };
+    let mut phase = build_descriptor_construction::<QueuePlan>(Some(&config), &descriptor);
+    phase.solve(&mut solver_scope);
+
+    assert_eq!(
+        solver_scope
+            .working_solution()
+            .tasks
+            .iter()
+            .map(|task| task.worker_idx)
+            .collect::<Vec<_>>(),
+        vec![Some(0), Some(1)]
+    );
+}
+
+#[test]
 fn descriptor_nearby_change_uses_value_distance_meter() {
     let descriptor = descriptor_with_nearby_value_meter();
     let plan = Plan {
@@ -968,15 +1357,65 @@ fn descriptor_cartesian_builds_composite_moves() {
     });
 
     let selector = build_descriptor_move_selector::<Plan>(Some(&config), &descriptor, None);
-    let moves: Vec<_> = selector.iter_moves(&director).collect();
+    let mut cursor = selector.open_cursor(&director);
+    let indices =
+        collect_cursor_indices::<Plan, super::DescriptorScalarMoveUnion<Plan>, _>(&mut cursor);
 
-    assert!(!moves.is_empty());
-    assert!(moves
-        .iter()
-        .all(|mov| matches!(mov, super::DescriptorScalarMoveUnion::Composite(_))));
-    let signature = moves[0].tabu_signature(&director);
+    assert!(!indices.is_empty());
+    assert!(indices.iter().all(|&index| matches!(
+        cursor.candidate(index),
+        Some(MoveCandidateRef::Sequential(_))
+    )));
+    let signature = cursor.take_candidate(indices[0]).tabu_signature(&director);
     assert!(!signature.move_id.is_empty());
     assert!(!signature.entity_tokens.is_empty());
+}
+
+fn keep_all_descriptor_cartesian_candidates(
+    candidate: MoveCandidateRef<'_, Plan, super::DescriptorScalarMoveUnion<Plan>>,
+) -> bool {
+    matches!(candidate, MoveCandidateRef::Sequential(_))
+}
+
+#[test]
+fn descriptor_cartesian_selector_survives_filtering_wrapper() {
+    let descriptor = descriptor();
+    let plan = Plan {
+        workers: vec![Worker, Worker, Worker],
+        tasks: vec![
+            Task {
+                worker_idx: Some(0),
+            },
+            Task {
+                worker_idx: Some(1),
+            },
+        ],
+        score: None,
+    };
+    let director = ScoreDirector::simple(plan, descriptor.clone(), |s, _| s.tasks.len());
+    let config = MoveSelectorConfig::CartesianProductMoveSelector(CartesianProductConfig {
+        selectors: vec![
+            MoveSelectorConfig::ChangeMoveSelector(ChangeMoveConfig {
+                target: VariableTargetConfig::default(),
+            }),
+            MoveSelectorConfig::SwapMoveSelector(SwapMoveConfig {
+                target: VariableTargetConfig::default(),
+            }),
+        ],
+    });
+
+    let selector = build_descriptor_move_selector::<Plan>(Some(&config), &descriptor, None);
+    let filtered = FilteringMoveSelector::new(selector, keep_all_descriptor_cartesian_candidates);
+    let mut cursor = filtered.open_cursor(&director);
+    let indices =
+        collect_cursor_indices::<Plan, super::DescriptorScalarMoveUnion<Plan>, _>(&mut cursor);
+
+    assert!(!indices.is_empty());
+    assert!(indices.iter().all(|&index| matches!(
+        cursor.candidate(index),
+        Some(MoveCandidateRef::Sequential(_))
+    )));
+    assert!(cursor.take_candidate(indices[0]).is_doable(&director));
 }
 
 #[test]

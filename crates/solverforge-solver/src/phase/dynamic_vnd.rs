@@ -5,6 +5,7 @@ use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::{Director, RecordingDirector};
 
 use crate::heuristic::r#move::Move;
+use crate::heuristic::selector::move_selector::MoveCursor;
 use crate::heuristic::selector::MoveSelector;
 use crate::phase::control::{
     settle_search_interrupt, should_interrupt_evaluation, should_interrupt_generation,
@@ -50,9 +51,9 @@ where
 
         while k < self.neighborhoods.len() {
             let mut step_scope = StepScope::new(&mut phase_scope);
-            let cursor = self.neighborhoods[k].open_cursor(step_scope.score_director());
+            let mut cursor = self.neighborhoods[k].open_cursor(step_scope.score_director());
 
-            match find_best_improving_move(cursor, &mut step_scope, &current_score) {
+            match find_best_improving_move(&mut cursor, &mut step_scope, &current_score) {
                 MoveSearchResult::Found(selected_move, selected_score) => {
                     step_scope.apply_committed_move(&selected_move);
                     step_scope.set_step_score(selected_score);
@@ -84,8 +85,8 @@ enum MoveSearchResult<M, Sc> {
     Interrupted,
 }
 
-fn find_best_improving_move<S, D, ProgressCb, M, I>(
-    moves: I,
+fn find_best_improving_move<S, D, ProgressCb, M, C>(
+    cursor: &mut C,
     step_scope: &mut StepScope<'_, '_, '_, S, D, ProgressCb>,
     current_score: &S::Score,
 ) -> MoveSearchResult<M, S::Score>
@@ -94,22 +95,28 @@ where
     D: Director<S>,
     ProgressCb: ProgressCallback<S>,
     M: Move<S>,
-    I: IntoIterator<Item = M>,
+    C: MoveCursor<S, M>,
 {
-    let mut best: Option<(M, S::Score)> = None;
+    let mut best: Option<(usize, S::Score)> = None;
 
-    for (generated, mov) in moves.into_iter().enumerate() {
+    let mut generated = 0usize;
+    let mut evaluated = 0usize;
+    loop {
         if should_interrupt_generation(step_scope, generated) {
             return MoveSearchResult::Interrupted;
         }
-
-        if should_interrupt_evaluation(step_scope, generated) {
-            return MoveSearchResult::Interrupted;
-        }
+        let Some((candidate_index, mov)) = cursor.next_candidate() else {
+            break;
+        };
+        generated += 1;
 
         if !mov.is_doable(step_scope.score_director()) {
             continue;
         }
+        if should_interrupt_evaluation(step_scope, evaluated) {
+            return MoveSearchResult::Interrupted;
+        }
+        evaluated += 1;
 
         let mut recording = RecordingDirector::new(step_scope.score_director_mut());
         mov.do_move(&mut recording);
@@ -119,16 +126,20 @@ where
         if move_score > *current_score {
             match &best {
                 Some((_, best_score)) if move_score > *best_score => {
-                    best = Some((mov, move_score));
+                    best = Some((candidate_index, move_score));
                 }
-                None => best = Some((mov, move_score)),
+                None => best = Some((candidate_index, move_score)),
                 _ => {}
             }
         }
     }
 
     match best {
-        Some((mov, score)) => MoveSearchResult::Found(mov, score),
+        Some((index, score)) => MoveSearchResult::Found(cursor.take_candidate(index), score),
         None => MoveSearchResult::NotFound,
     }
 }
+
+#[cfg(test)]
+#[path = "dynamic_vnd_tests.rs"]
+mod tests;

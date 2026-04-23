@@ -2,27 +2,24 @@ use std::fmt::{self, Debug};
 use std::hash::Hash;
 use std::marker::PhantomData;
 
-use solverforge_config::{
-    ConstructionHeuristicConfig, ConstructionHeuristicType, PhaseConfig, SolverConfig,
-};
+use solverforge_config::{ConstructionHeuristicConfig, PhaseConfig, SolverConfig};
 use solverforge_core::domain::{PlanningSolution, SolutionDescriptor};
 use solverforge_core::score::{ParseableScore, Score};
 
 use crate::builder::{build_local_search, build_vnd, LocalSearch, ModelContext, Vnd};
 use crate::descriptor_scalar::{
-    build_descriptor_construction, scalar_work_remaining_with_frontier,
+    build_descriptor_construction_from_bindings, scalar_work_remaining_with_frontier,
 };
 use crate::heuristic::selector::nearby_list_change::CrossEntityDistanceMeter;
 use crate::manager::solve_specialized_list_construction;
+use crate::phase::construction::{select_construction_capabilities, ConstructionRoute};
 use crate::phase::{sequence::PhaseSequence, Phase};
 use crate::scope::{ProgressCallback, SolverScope};
 
 #[cfg(test)]
-#[path = "runtime_tests.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "list_solver_tests.rs"]
 mod list_tests;
 
 pub struct ListVariableMetadata<S, DM, IDM> {
@@ -89,79 +86,6 @@ impl<S, DM, IDM> ListVariableMetadata<S, DM, IDM> {
             _phantom: PhantomData,
         }
     }
-}
-
-fn has_explicit_target(config: &ConstructionHeuristicConfig) -> bool {
-    config.target.variable_name.is_some() || config.target.entity_class.is_some()
-}
-
-fn is_list_only_heuristic(heuristic: ConstructionHeuristicType) -> bool {
-    matches!(
-        heuristic,
-        ConstructionHeuristicType::ListRoundRobin
-            | ConstructionHeuristicType::ListCheapestInsertion
-            | ConstructionHeuristicType::ListRegretInsertion
-            | ConstructionHeuristicType::ListClarkeWright
-            | ConstructionHeuristicType::ListKOpt
-    )
-}
-
-fn is_scalar_only_heuristic(heuristic: ConstructionHeuristicType) -> bool {
-    matches!(
-        heuristic,
-        ConstructionHeuristicType::FirstFitDecreasing
-            | ConstructionHeuristicType::WeakestFit
-            | ConstructionHeuristicType::WeakestFitDecreasing
-            | ConstructionHeuristicType::StrongestFit
-            | ConstructionHeuristicType::StrongestFitDecreasing
-            | ConstructionHeuristicType::AllocateEntityFromQueue
-            | ConstructionHeuristicType::AllocateToValueFromQueue
-    )
-}
-
-fn should_use_descriptor_scalar_path(
-    heuristic: ConstructionHeuristicType,
-    has_matching_scalar: bool,
-    has_matching_list: bool,
-) -> bool {
-    has_matching_scalar && (!has_matching_list || is_scalar_only_heuristic(heuristic))
-}
-
-fn matching_list_variables<S, V, DM, IDM>(
-    config: Option<&ConstructionHeuristicConfig>,
-    model: &ModelContext<S, V, DM, IDM>,
-) -> Vec<crate::builder::ListVariableContext<S, V, DM, IDM>>
-where
-    S: PlanningSolution,
-    V: Copy + PartialEq + Eq + Hash + Send + Sync + 'static,
-    DM: Clone,
-    IDM: Clone,
-{
-    let entity_class = config.and_then(|cfg| cfg.target.entity_class.as_deref());
-    let variable_name = config.and_then(|cfg| cfg.target.variable_name.as_deref());
-    let explicit_target = config.is_some_and(has_explicit_target);
-
-    model
-        .list_variables()
-        .filter(|ctx| !explicit_target || ctx.matches_target(entity_class, variable_name))
-        .cloned()
-        .collect()
-}
-
-fn has_matching_scalar_target<S, V, DM, IDM>(
-    config: Option<&ConstructionHeuristicConfig>,
-    model: &ModelContext<S, V, DM, IDM>,
-) -> bool
-where
-    S: PlanningSolution,
-{
-    let entity_class = config.and_then(|cfg| cfg.target.entity_class.as_deref());
-    let variable_name = config.and_then(|cfg| cfg.target.variable_name.as_deref());
-    let explicit_target = config.is_some_and(has_explicit_target);
-
-    model
-        .scalar_variables()
-        .any(|ctx| !explicit_target || ctx.matches_target(entity_class, variable_name))
 }
 
 pub struct Construction<S, V, DM, IDM>
@@ -247,71 +171,45 @@ where
 {
     fn solve(&mut self, solver_scope: &mut SolverScope<'_, S, D, ProgressCb>) {
         let config = self.config.as_ref();
-        let heuristic = config
-            .map(|cfg| cfg.construction_heuristic_type)
-            .unwrap_or(ConstructionHeuristicType::FirstFit);
-        let list_variables = matching_list_variables(config, &self.model);
-        let has_matching_scalar = has_matching_scalar_target(config, &self.model);
-        let has_matching_list = !list_variables.is_empty();
-        let explicit_target = config.is_some_and(has_explicit_target);
+        let capabilities = select_construction_capabilities(config, &self.descriptor, &self.model);
 
-        if is_list_only_heuristic(heuristic) {
-            assert!(
-                self.model.has_list_variables(),
-                "list construction heuristic {:?} configured against a solution with no planning list variable",
-                heuristic
-            );
-            assert!(
-                !explicit_target || !list_variables.is_empty(),
-                "list construction heuristic {:?} does not match the targeted planning list variable for entity_class={:?} variable_name={:?}",
-                heuristic,
-                config.and_then(|cfg| cfg.target.entity_class.as_deref()),
-                config.and_then(|cfg| cfg.target.variable_name.as_deref()),
-            );
-
-            let ran_child_phase = self.solve_list(solver_scope, &list_variables);
-            if !ran_child_phase {
-                finalize_noop_construction(solver_scope);
+        match capabilities.route {
+            ConstructionRoute::SpecializedList => {
+                let ran_child_phase = self.solve_list(solver_scope, &capabilities.list_variables);
+                if !ran_child_phase {
+                    finalize_noop_construction(solver_scope);
+                }
             }
-            return;
-        }
-
-        if should_use_descriptor_scalar_path(heuristic, has_matching_scalar, has_matching_list) {
-            assert!(
-                !explicit_target || has_matching_scalar,
-                "scalar construction heuristic {:?} does not match targeted scalar planning variables for entity_class={:?} variable_name={:?}",
-                heuristic,
-                config.and_then(|cfg| cfg.target.entity_class.as_deref()),
-                config.and_then(|cfg| cfg.target.variable_name.as_deref()),
-            );
-            let scalar_remaining = scalar_work_remaining_with_frontier(
-                &self.descriptor,
-                solver_scope.construction_frontier(),
-                solver_scope.solution_revision(),
-                if explicit_target {
-                    config.and_then(|cfg| cfg.target.entity_class.as_deref())
+            ConstructionRoute::DescriptorScalar => {
+                let scalar_remaining = scalar_work_remaining_with_frontier(
+                    &self.descriptor,
+                    solver_scope.construction_frontier(),
+                    solver_scope.solution_revision(),
+                    capabilities.entity_class.as_deref(),
+                    capabilities.variable_name.as_deref(),
+                    solver_scope.working_solution(),
+                );
+                if scalar_remaining {
+                    build_descriptor_construction_from_bindings(
+                        config,
+                        &self.descriptor,
+                        capabilities.scalar_bindings.clone(),
+                    )
+                    .solve(solver_scope);
                 } else {
-                    None
-                },
-                if explicit_target {
-                    config.and_then(|cfg| cfg.target.variable_name.as_deref())
-                } else {
-                    None
-                },
-                solver_scope.working_solution(),
-            );
-            if scalar_remaining {
-                build_descriptor_construction(config, &self.descriptor).solve(solver_scope);
-            } else {
-                finalize_noop_construction(solver_scope);
+                    finalize_noop_construction(solver_scope);
+                }
             }
-            return;
-        }
-
-        let ran_child_phase =
-            crate::phase::construction::solve_construction(config, &self.model, solver_scope);
-        if !ran_child_phase {
-            finalize_noop_construction(solver_scope);
+            ConstructionRoute::GenericMixed => {
+                let ran_child_phase = crate::phase::construction::solve_construction(
+                    config,
+                    &self.model,
+                    solver_scope,
+                );
+                if !ran_child_phase {
+                    finalize_noop_construction(solver_scope);
+                }
+            }
         }
     }
 
@@ -437,8 +335,35 @@ where
 
 #[cfg(test)]
 mod construction_routing_tests {
-    use super::should_use_descriptor_scalar_path;
     use solverforge_config::ConstructionHeuristicType;
+
+    fn should_use_descriptor_scalar_path(
+        heuristic: ConstructionHeuristicType,
+        has_scalar_variables: bool,
+        has_list_variables: bool,
+    ) -> bool {
+        if !has_scalar_variables {
+            return false;
+        }
+
+        match heuristic {
+            ConstructionHeuristicType::ListRoundRobin
+            | ConstructionHeuristicType::ListCheapestInsertion
+            | ConstructionHeuristicType::ListRegretInsertion
+            | ConstructionHeuristicType::ListClarkeWright
+            | ConstructionHeuristicType::ListKOpt => false,
+            ConstructionHeuristicType::FirstFit | ConstructionHeuristicType::CheapestInsertion => {
+                !has_list_variables
+            }
+            ConstructionHeuristicType::FirstFitDecreasing
+            | ConstructionHeuristicType::WeakestFit
+            | ConstructionHeuristicType::WeakestFitDecreasing
+            | ConstructionHeuristicType::StrongestFit
+            | ConstructionHeuristicType::StrongestFitDecreasing
+            | ConstructionHeuristicType::AllocateEntityFromQueue
+            | ConstructionHeuristicType::AllocateToValueFromQueue => true,
+        }
+    }
 
     #[test]
     fn pure_scalar_first_fit_uses_descriptor_scalar_path() {

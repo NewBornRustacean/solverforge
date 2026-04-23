@@ -9,6 +9,8 @@ pub type UsizeSetter = fn(&mut dyn Any, Option<usize>);
 pub type UsizeEntityValueProvider = for<'a> fn(&'a dyn Any) -> Vec<usize>;
 pub type UsizeNearbyValueDistanceMeter = fn(&dyn Any, usize, usize) -> f64;
 pub type UsizeNearbyEntityDistanceMeter = fn(&dyn Any, usize, usize) -> f64;
+pub type UsizeConstructionEntityOrderKey = fn(&dyn Any, usize) -> i64;
+pub type UsizeConstructionValueOrderKey = fn(&dyn Any, usize, usize) -> i64;
 
 // Describes a planning variable at runtime.
 #[derive(Debug, Clone)]
@@ -33,6 +35,8 @@ pub struct VariableDescriptor {
     pub entity_value_provider: Option<UsizeEntityValueProvider>,
     pub nearby_value_distance_meter: Option<UsizeNearbyValueDistanceMeter>,
     pub nearby_entity_distance_meter: Option<UsizeNearbyEntityDistanceMeter>,
+    pub construction_entity_order_key: Option<UsizeConstructionEntityOrderKey>,
+    pub construction_value_order_key: Option<UsizeConstructionValueOrderKey>,
 }
 
 impl VariableDescriptor {
@@ -50,6 +54,8 @@ impl VariableDescriptor {
             entity_value_provider: None,
             nearby_value_distance_meter: None,
             nearby_entity_distance_meter: None,
+            construction_entity_order_key: None,
+            construction_value_order_key: None,
         }
     }
 
@@ -71,6 +77,8 @@ impl VariableDescriptor {
             entity_value_provider: None,
             nearby_value_distance_meter: None,
             nearby_entity_distance_meter: None,
+            construction_entity_order_key: None,
+            construction_value_order_key: None,
         }
     }
 
@@ -88,6 +96,8 @@ impl VariableDescriptor {
             entity_value_provider: None,
             nearby_value_distance_meter: None,
             nearby_entity_distance_meter: None,
+            construction_entity_order_key: None,
+            construction_value_order_key: None,
         }
     }
 
@@ -105,6 +115,8 @@ impl VariableDescriptor {
             entity_value_provider: None,
             nearby_value_distance_meter: None,
             nearby_entity_distance_meter: None,
+            construction_entity_order_key: None,
+            construction_value_order_key: None,
         }
     }
 
@@ -136,6 +148,8 @@ impl VariableDescriptor {
             entity_value_provider: None,
             nearby_value_distance_meter: None,
             nearby_entity_distance_meter: None,
+            construction_entity_order_key: None,
+            construction_value_order_key: None,
         }
     }
 
@@ -174,6 +188,22 @@ impl VariableDescriptor {
         meter: UsizeNearbyEntityDistanceMeter,
     ) -> Self {
         self.nearby_entity_distance_meter = Some(meter);
+        self
+    }
+
+    pub fn with_construction_entity_order_key(
+        mut self,
+        order_key: UsizeConstructionEntityOrderKey,
+    ) -> Self {
+        self.construction_entity_order_key = Some(order_key);
+        self
+    }
+
+    pub fn with_construction_value_order_key(
+        mut self,
+        order_key: UsizeConstructionValueOrderKey,
+    ) -> Self {
+        self.construction_value_order_key = Some(order_key);
         self
     }
 }

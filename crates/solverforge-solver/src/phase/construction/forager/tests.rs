@@ -203,7 +203,7 @@ fn test_empty_placement() {
     assert_eq!(selected, ConstructionChoice::KeepCurrent);
 }
 
-fn value_strength(m: &TestMove) -> i64 {
+fn value_strength(m: &TestMove, _solution: &NQueensSolution) -> i64 {
     m.to_value().copied().unwrap_or(0)
 }
 
@@ -243,6 +243,58 @@ fn test_strongest_fit_forager() {
         let score = director.calculate_score();
         assert_eq!(score, SoftScore::of(0));
     }
+}
+
+#[test]
+fn weakest_fit_keeps_current_when_selected_move_does_not_beat_optional_baseline() {
+    let mut director = create_scored_director(0);
+    let placement = create_placement_with_values([0, 7, 3]).with_keep_current_legal(true);
+
+    let forager = WeakestFitForager::<NQueensSolution, TestMove>::new(value_strength);
+
+    assert_eq!(
+        forager.pick_move_index(&placement, &mut director),
+        ConstructionChoice::KeepCurrent
+    );
+}
+
+#[test]
+fn weakest_fit_selects_when_selected_move_beats_optional_baseline() {
+    let mut director = create_scored_director(0);
+    let placement = create_placement_with_values([1, 7, 3]).with_keep_current_legal(true);
+
+    let forager = WeakestFitForager::<NQueensSolution, TestMove>::new(value_strength);
+
+    assert_eq!(
+        forager.pick_move_index(&placement, &mut director),
+        ConstructionChoice::Select(0)
+    );
+}
+
+#[test]
+fn strongest_fit_keeps_current_when_selected_move_does_not_beat_optional_baseline() {
+    let mut director = create_scored_director(0);
+    let placement = create_placement_with_values([-5, -1, 0]).with_keep_current_legal(true);
+
+    let forager = StrongestFitForager::<NQueensSolution, TestMove>::new(value_strength);
+
+    assert_eq!(
+        forager.pick_move_index(&placement, &mut director),
+        ConstructionChoice::KeepCurrent
+    );
+}
+
+#[test]
+fn strongest_fit_selects_when_selected_move_beats_optional_baseline() {
+    let mut director = create_scored_director(0);
+    let placement = create_placement_with_values([-5, 7, 3]).with_keep_current_legal(true);
+
+    let forager = StrongestFitForager::<NQueensSolution, TestMove>::new(value_strength);
+
+    assert_eq!(
+        forager.pick_move_index(&placement, &mut director),
+        ConstructionChoice::Select(1)
+    );
 }
 
 #[test]

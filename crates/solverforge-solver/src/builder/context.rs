@@ -41,6 +41,8 @@ impl<S> fmt::Debug for ValueSource<S> {
 
 pub type NearbyValueDistanceMeter<S> = fn(&S, usize, usize) -> f64;
 pub type NearbyEntityDistanceMeter<S> = fn(&S, usize, usize) -> f64;
+pub type ConstructionEntityOrderKey<S> = fn(&S, usize) -> i64;
+pub type ConstructionValueOrderKey<S> = fn(&S, usize, usize) -> i64;
 
 pub struct ScalarVariableContext<S> {
     pub descriptor_index: usize,
@@ -53,6 +55,8 @@ pub struct ScalarVariableContext<S> {
     pub allows_unassigned: bool,
     pub nearby_value_distance_meter: Option<NearbyValueDistanceMeter<S>>,
     pub nearby_entity_distance_meter: Option<NearbyEntityDistanceMeter<S>>,
+    pub construction_entity_order_key: Option<ConstructionEntityOrderKey<S>>,
+    pub construction_value_order_key: Option<ConstructionValueOrderKey<S>>,
 }
 
 impl<S> Clone for ScalarVariableContext<S> {
@@ -86,6 +90,8 @@ impl<S> ScalarVariableContext<S> {
             allows_unassigned,
             nearby_value_distance_meter: None,
             nearby_entity_distance_meter: None,
+            construction_entity_order_key: None,
+            construction_value_order_key: None,
         }
     }
 
@@ -99,6 +105,22 @@ impl<S> ScalarVariableContext<S> {
         meter: NearbyEntityDistanceMeter<S>,
     ) -> Self {
         self.nearby_entity_distance_meter = Some(meter);
+        self
+    }
+
+    pub fn with_construction_entity_order_key(
+        mut self,
+        order_key: ConstructionEntityOrderKey<S>,
+    ) -> Self {
+        self.construction_entity_order_key = Some(order_key);
+        self
+    }
+
+    pub fn with_construction_value_order_key(
+        mut self,
+        order_key: ConstructionValueOrderKey<S>,
+    ) -> Self {
+        self.construction_value_order_key = Some(order_key);
         self
     }
 
@@ -123,6 +145,14 @@ impl<S> fmt::Debug for ScalarVariableContext<S> {
             .field(
                 "has_nearby_entity_distance_meter",
                 &self.nearby_entity_distance_meter.is_some(),
+            )
+            .field(
+                "has_construction_entity_order_key",
+                &self.construction_entity_order_key.is_some(),
+            )
+            .field(
+                "has_construction_value_order_key",
+                &self.construction_value_order_key.is_some(),
             )
             .finish()
     }

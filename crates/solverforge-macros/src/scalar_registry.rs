@@ -10,6 +10,8 @@ pub(crate) struct ScalarVariableMetadata {
     pub provider_is_entity_field: bool,
     pub nearby_value_distance_meter: Option<String>,
     pub nearby_entity_distance_meter: Option<String>,
+    pub construction_entity_order_key: Option<String>,
+    pub construction_value_order_key: Option<String>,
 }
 
 #[derive(Clone, Debug)]

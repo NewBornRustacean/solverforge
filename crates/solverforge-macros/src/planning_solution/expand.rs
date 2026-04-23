@@ -159,6 +159,47 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                         }
                     });
                 }
+                if let Some(order_key_name) = &variable.construction_entity_order_key {
+                    let order_key_ident = format_ident!("{order_key_name}");
+                    let helper_ident = format_ident!(
+                        "__solverforge_descriptor_construction_entity_order_key_{}_{}",
+                        field_name,
+                        variable.field_name
+                    );
+                    helpers.push(quote! {
+                        fn #helper_ident(
+                            solution: &dyn ::std::any::Any,
+                            entity_index: usize,
+                        ) -> i64 {
+                            let solution = solution
+                                .downcast_ref::<Self>()
+                                .expect("solution type mismatch for construction entity order key");
+                            let entity = &solution.#field_name[entity_index];
+                            #order_key_ident(solution, entity)
+                        }
+                    });
+                }
+                if let Some(order_key_name) = &variable.construction_value_order_key {
+                    let order_key_ident = format_ident!("{order_key_name}");
+                    let helper_ident = format_ident!(
+                        "__solverforge_descriptor_construction_value_order_key_{}_{}",
+                        field_name,
+                        variable.field_name
+                    );
+                    helpers.push(quote! {
+                        fn #helper_ident(
+                            solution: &dyn ::std::any::Any,
+                            entity_index: usize,
+                            value: usize,
+                        ) -> i64 {
+                            let solution = solution
+                                .downcast_ref::<Self>()
+                                .expect("solution type mismatch for construction value order key");
+                            let entity = &solution.#field_name[entity_index];
+                            #order_key_ident(solution, entity, value)
+                        }
+                    });
+                }
                 helpers
             })
         })
@@ -210,6 +251,50 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                                 .find(|variable| variable.name == #variable_name)
                                 .expect("variable descriptor missing for nearby entity distance meter");
                             variable_descriptor.nearby_entity_distance_meter =
+                                ::core::option::Option::Some(Self::#helper_ident);
+                        }
+                    });
+                }
+                if variable.construction_entity_order_key.is_some() {
+                    let helper_ident = format_ident!(
+                        "__solverforge_descriptor_construction_entity_order_key_{}_{}",
+                        field_name,
+                        variable.field_name
+                    );
+                    attachments.push(quote! {
+                        {
+                            let entity_descriptor = descriptor
+                                .entity_descriptors
+                                .get_mut(#descriptor_index)
+                                .expect("entity descriptor missing for construction entity order key");
+                            let variable_descriptor = entity_descriptor
+                                .variable_descriptors
+                                .iter_mut()
+                                .find(|variable| variable.name == #variable_name)
+                                .expect("variable descriptor missing for construction entity order key");
+                            variable_descriptor.construction_entity_order_key =
+                                ::core::option::Option::Some(Self::#helper_ident);
+                        }
+                    });
+                }
+                if variable.construction_value_order_key.is_some() {
+                    let helper_ident = format_ident!(
+                        "__solverforge_descriptor_construction_value_order_key_{}_{}",
+                        field_name,
+                        variable.field_name
+                    );
+                    attachments.push(quote! {
+                        {
+                            let entity_descriptor = descriptor
+                                .entity_descriptors
+                                .get_mut(#descriptor_index)
+                                .expect("entity descriptor missing for construction value order key");
+                            let variable_descriptor = entity_descriptor
+                                .variable_descriptors
+                                .iter_mut()
+                                .find(|variable| variable.name == #variable_name)
+                                .expect("variable descriptor missing for construction value order key");
+                            variable_descriptor.construction_value_order_key =
                                 ::core::option::Option::Some(Self::#helper_ident);
                         }
                     });

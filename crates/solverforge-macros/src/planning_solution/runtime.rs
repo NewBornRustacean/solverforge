@@ -273,6 +273,49 @@ fn generate_scalar_runtime_setup(
                         TokenStream::new()
                     };
 
+                let construction_entity_order_key_helper =
+                    if let Some(order_key_name) = &variable.construction_entity_order_key {
+                        let order_key_ident = format_ident!("{order_key_name}");
+                        let helper_ident = format_ident!(
+                            "__solverforge_scalar_construction_entity_order_key_{}_{}",
+                            field_name,
+                            variable.field_name
+                        );
+                        quote! {
+                            fn #helper_ident(
+                                solution: &#solution_name,
+                                entity_index: usize,
+                            ) -> i64 {
+                                let entity = &solution.#field_name[entity_index];
+                                #order_key_ident(solution, entity)
+                            }
+                        }
+                    } else {
+                        TokenStream::new()
+                    };
+
+                let construction_value_order_key_helper =
+                    if let Some(order_key_name) = &variable.construction_value_order_key {
+                        let order_key_ident = format_ident!("{order_key_name}");
+                        let helper_ident = format_ident!(
+                            "__solverforge_scalar_construction_value_order_key_{}_{}",
+                            field_name,
+                            variable.field_name
+                        );
+                        quote! {
+                            fn #helper_ident(
+                                solution: &#solution_name,
+                                entity_index: usize,
+                                value: usize,
+                            ) -> i64 {
+                                let entity = &solution.#field_name[entity_index];
+                                #order_key_ident(solution, entity, value)
+                            }
+                        }
+                    } else {
+                        TokenStream::new()
+                    };
+
                 let nearby_value_distance_attach = if variable
                     .nearby_value_distance_meter
                     .is_some()
@@ -305,6 +348,38 @@ fn generate_scalar_runtime_setup(
                     TokenStream::new()
                 };
 
+                let construction_entity_order_key_attach = if variable
+                    .construction_entity_order_key
+                    .is_some()
+                {
+                    let helper_ident = format_ident!(
+                        "__solverforge_scalar_construction_entity_order_key_{}_{}",
+                        field_name,
+                        variable.field_name
+                    );
+                    quote! {
+                        .with_construction_entity_order_key(#helper_ident)
+                    }
+                } else {
+                    TokenStream::new()
+                };
+
+                let construction_value_order_key_attach = if variable
+                    .construction_value_order_key
+                    .is_some()
+                {
+                    let helper_ident = format_ident!(
+                        "__solverforge_scalar_construction_value_order_key_{}_{}",
+                        field_name,
+                        variable.field_name
+                    );
+                    quote! {
+                        .with_construction_value_order_key(#helper_ident)
+                    }
+                } else {
+                    TokenStream::new()
+                };
+
                 quote! {
                     fn #getter_ident(
                         solution: &#solution_name,
@@ -327,6 +402,8 @@ fn generate_scalar_runtime_setup(
                     #maybe_slice_helper
                     #nearby_value_distance_helper
                     #nearby_entity_distance_helper
+                    #construction_entity_order_key_helper
+                    #construction_value_order_key_helper
 
                     __solverforge_variables.push(
                         ::solverforge::__internal::VariableContext::Scalar(
@@ -342,6 +419,8 @@ fn generate_scalar_runtime_setup(
                             )
                             #nearby_value_distance_attach
                             #nearby_entity_distance_attach
+                            #construction_entity_order_key_attach
+                            #construction_value_order_key_attach
                         )
                     );
                 }

@@ -26,6 +26,10 @@ pub(super) fn generate_scalar_helpers(
             parse_attribute_string(attr, "nearby_value_distance_meter");
         let nearby_entity_distance_meter =
             parse_attribute_string(attr, "nearby_entity_distance_meter");
+        let construction_entity_order_key =
+            parse_attribute_string(attr, "construction_entity_order_key");
+        let construction_value_order_key =
+            parse_attribute_string(attr, "construction_value_order_key");
 
         if !field_is_option_usize(&field.ty) {
             continue;
@@ -93,6 +97,8 @@ pub(super) fn generate_scalar_helpers(
             provider_is_entity_field,
             nearby_value_distance_meter,
             nearby_entity_distance_meter,
+            construction_entity_order_key,
+            construction_value_order_key,
         });
     }
 
