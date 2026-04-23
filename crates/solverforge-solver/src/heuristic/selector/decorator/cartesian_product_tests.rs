@@ -206,7 +206,7 @@ fn cartesian_product_skips_rows_with_illegal_left_moves() {
 
     let moves: Vec<_> = selector.open_cursor(&director).collect();
 
-    assert_eq!(selector.size(&director), 1);
+    assert_eq!(selector.size(&director), 2);
     assert_eq!(moves.len(), 1);
     assert!(moves.iter().all(|mov| mov.is_doable(&director)));
 
@@ -234,7 +234,7 @@ fn cartesian_product_skips_pairs_with_illegal_right_moves() {
 
     let moves: Vec<_> = selector.open_cursor(&director).collect();
 
-    assert_eq!(selector.size(&director), 1);
+    assert_eq!(selector.size(&director), 2);
     assert_eq!(moves.len(), 1);
     assert!(matches!(moves[0], ScalarMoveUnion::Composite(_)));
     assert!(moves.iter().all(|mov| mov.is_doable(&director)));
@@ -274,4 +274,47 @@ fn cartesian_product_preview_updates_shadows_before_building_right_row() {
         director.working_solution().tasks[0].shadow_y_target,
         Some(12)
     );
+}
+
+#[derive(Debug)]
+struct CountingSelector {
+    open_count: std::cell::Cell<usize>,
+}
+
+impl CountingSelector {
+    fn new() -> Self {
+        Self {
+            open_count: std::cell::Cell::new(0),
+        }
+    }
+}
+
+impl MoveSelector<Sol, ScalarMoveUnion<Sol, i32>> for CountingSelector {
+    fn open_cursor<'a, D: solverforge_scoring::Director<Sol>>(
+        &'a self,
+        _score_director: &D,
+    ) -> impl Iterator<Item = ScalarMoveUnion<Sol, i32>> + 'a {
+        self.open_count.set(self.open_count.get() + 1);
+        vec![x_move(1), x_move(2)].into_iter()
+    }
+
+    fn size<D: solverforge_scoring::Director<Sol>>(&self, _score_director: &D) -> usize {
+        2
+    }
+}
+
+#[test]
+fn cartesian_product_size_does_not_open_child_cursors() {
+    let director = create_director(vec![Task {
+        x: Some(0),
+        y: Some(0),
+        shadow_y_target: None,
+    }]);
+    let left = CountingSelector::new();
+    let right = CountingSelector::new();
+    let selector = CartesianProductSelector::new(left, right, wrap_scalar_composite);
+
+    assert_eq!(selector.size(&director), 4);
+    assert_eq!(selector.left.open_count.get(), 0);
+    assert_eq!(selector.right.open_count.get(), 0);
 }

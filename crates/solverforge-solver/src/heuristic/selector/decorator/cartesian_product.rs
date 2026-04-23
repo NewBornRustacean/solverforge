@@ -448,7 +448,9 @@ where
     }
 
     fn size<D: Director<S>>(&self, score_director: &D) -> usize {
-        self.build_moves(score_director).len()
+        self.left
+            .size(score_director)
+            .saturating_mul(self.right.size(score_director))
     }
 
     fn append_moves<D: Director<S>>(&self, score_director: &D, arena: &mut MoveArena<M>) {

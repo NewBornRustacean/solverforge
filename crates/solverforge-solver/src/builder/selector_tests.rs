@@ -2,8 +2,9 @@ use std::any::TypeId;
 
 use solverforge_config::{
     AcceptorConfig, CartesianProductConfig, ChangeMoveConfig, ForagerConfig, LateAcceptanceConfig,
-    LimitedNeighborhoodConfig, ListChangeMoveConfig, ListReverseMoveConfig, LocalSearchConfig,
-    MoveSelectorConfig, SwapMoveConfig, UnionMoveSelectorConfig, VariableTargetConfig,
+    LimitedNeighborhoodConfig, ListChangeMoveConfig, ListReverseMoveConfig,
+    ListRuinMoveSelectorConfig, LocalSearchConfig, MoveSelectorConfig,
+    RuinRecreateMoveSelectorConfig, SwapMoveConfig, UnionMoveSelectorConfig, VariableTargetConfig,
 };
 use solverforge_core::domain::{
     EntityCollectionExtractor, EntityDescriptor, PlanningSolution, SolutionDescriptor,
@@ -493,7 +494,7 @@ fn cartesian_scalar_selector_builds_composite_moves() {
     assert!(selector.size(&director) <= left.size(&director) * right.size(&director));
     assert!(matches!(&neighborhoods[0], Neighborhood::Cartesian(_)));
     let moves: Vec<_> = selector.open_cursor(&director).collect();
-    assert_eq!(moves.len(), selector.size(&director));
+    assert!(moves.len() <= selector.size(&director));
     assert!(moves
         .iter()
         .all(|mov| matches!(mov, NeighborhoodMove::Composite(_))));
@@ -531,7 +532,7 @@ fn cartesian_list_selector_builds_composite_moves() {
     let moves: Vec<_> = selector.open_cursor(&director).collect();
 
     assert_eq!(neighborhoods.len(), 1);
-    assert_eq!(moves.len(), selector.size(&director));
+    assert!(moves.len() <= selector.size(&director));
     assert!(!moves.is_empty());
     assert!(matches!(&neighborhoods[0], Neighborhood::Cartesian(_)));
     assert!(moves
@@ -572,7 +573,7 @@ fn cartesian_mixed_selector_supports_limited_children() {
     let moves: Vec<_> = selector.open_cursor(&director).collect();
 
     assert!(selector.size(&director) <= left.size(&director) * right.size(&director));
-    assert_eq!(moves.len(), selector.size(&director));
+    assert!(moves.len() <= selector.size(&director));
     assert!(moves
         .iter()
         .all(|mov| matches!(mov, NeighborhoodMove::Composite(_))));
@@ -580,6 +581,40 @@ fn cartesian_mixed_selector_supports_limited_children() {
     assert!(moves
         .iter()
         .all(|mov| mov.variable_name() == "cartesian_product"));
+}
+
+#[test]
+#[should_panic(
+    expected = "cartesian_product left child cannot contain ruin_recreate_move_selector or list_ruin_move_selector"
+)]
+fn cartesian_selector_rejects_score_seeking_scalar_left_child() {
+    let config = MoveSelectorConfig::CartesianProductMoveSelector(CartesianProductConfig {
+        selectors: vec![
+            MoveSelectorConfig::RuinRecreateMoveSelector(RuinRecreateMoveSelectorConfig::default()),
+            MoveSelectorConfig::ChangeMoveSelector(ChangeMoveConfig {
+                target: VariableTargetConfig::default(),
+            }),
+        ],
+    });
+
+    let _ = build_move_selector(Some(&config), &scalar_only_model(), None);
+}
+
+#[test]
+#[should_panic(
+    expected = "cartesian_product left child cannot contain ruin_recreate_move_selector or list_ruin_move_selector"
+)]
+fn cartesian_selector_rejects_score_seeking_list_left_child() {
+    let config = MoveSelectorConfig::CartesianProductMoveSelector(CartesianProductConfig {
+        selectors: vec![
+            MoveSelectorConfig::ListRuinMoveSelector(ListRuinMoveSelectorConfig::default()),
+            MoveSelectorConfig::ListChangeMoveSelector(ListChangeMoveConfig {
+                target: VariableTargetConfig::default(),
+            }),
+        ],
+    });
+
+    let _ = build_move_selector(Some(&config), &list_only_model(), Some(7));
 }
 
 #[test]

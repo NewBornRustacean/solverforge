@@ -1109,6 +1109,28 @@ where
     S: PlanningSolution + 'static,
     S::Score: Score,
 {
+    fn selector_requires_score_during_move(config: &MoveSelectorConfig) -> bool {
+        match config {
+            MoveSelectorConfig::RuinRecreateMoveSelector(_) => true,
+            MoveSelectorConfig::LimitedNeighborhood(limit) => {
+                selector_requires_score_during_move(limit.selector.as_ref())
+            }
+            MoveSelectorConfig::UnionMoveSelector(union) => union
+                .selectors
+                .iter()
+                .any(selector_requires_score_during_move),
+            MoveSelectorConfig::CartesianProductMoveSelector(_) => true,
+            _ => false,
+        }
+    }
+
+    fn assert_cartesian_left_preview_safe(config: &MoveSelectorConfig) {
+        assert!(
+            !selector_requires_score_during_move(config),
+            "cartesian_product left child cannot contain ruin_recreate_move_selector because preview directors do not calculate scores",
+        );
+    }
+
     fn collect_nodes<S>(
         config: Option<&MoveSelectorConfig>,
         descriptor: &SolutionDescriptor,
@@ -1129,6 +1151,7 @@ where
                     2,
                     "cartesian_product move selector requires exactly two child selectors"
                 );
+                assert_cartesian_left_preview_safe(&cartesian.selectors[0]);
                 let left =
                     build_descriptor_flat_selector::<S>(Some(&cartesian.selectors[0]), descriptor);
                 let right =

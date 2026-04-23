@@ -125,6 +125,28 @@ where
 pub struct ListMoveSelectorBuilder;
 
 impl ListMoveSelectorBuilder {
+    fn selector_requires_score_during_move(config: &MoveSelectorConfig) -> bool {
+        match config {
+            MoveSelectorConfig::ListRuinMoveSelector(_) => true,
+            MoveSelectorConfig::LimitedNeighborhood(limit) => {
+                Self::selector_requires_score_during_move(limit.selector.as_ref())
+            }
+            MoveSelectorConfig::UnionMoveSelector(union) => union
+                .selectors
+                .iter()
+                .any(Self::selector_requires_score_during_move),
+            MoveSelectorConfig::CartesianProductMoveSelector(_) => true,
+            _ => false,
+        }
+    }
+
+    fn assert_cartesian_left_preview_safe(config: &MoveSelectorConfig) {
+        assert!(
+            !Self::selector_requires_score_during_move(config),
+            "cartesian_product left child cannot contain list_ruin_move_selector because preview directors do not calculate scores",
+        );
+    }
+
     /// Builds a top-level list move selector from move selector config and domain context.
     ///
     /// Default (no config): `Union(NearbyListChange(20), NearbyListSwap(20), ListReverse)`
@@ -162,6 +184,9 @@ impl ListMoveSelectorBuilder {
                         cartesian.selectors.len(),
                         2,
                         "cartesian_product move selector requires exactly two child selectors"
+                    );
+                    ListMoveSelectorBuilder::assert_cartesian_left_preview_safe(
+                        &cartesian.selectors[0],
                     );
                     let left = ListMoveSelectorBuilder::build_flat(
                         Some(&cartesian.selectors[0]),
