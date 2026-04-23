@@ -9,7 +9,9 @@ use solverforge_core::score::Score;
 use solverforge_scoring::{Director, RecordingDirector};
 
 use crate::heuristic::r#move::metadata::{
-    encode_option_usize, encode_usize, hash_str, MoveTabuScope, ScopedEntityTabuToken,
+    append_canonical_usize_slice_pair, encode_option_usize, encode_usize, hash_str,
+    ordered_coordinate_pair, scoped_move_identity, MoveTabuScope, ScopedEntityTabuToken,
+    TABU_OP_PILLAR_SWAP, TABU_OP_SWAP,
 };
 use crate::heuristic::r#move::{Move, MoveTabuSignature, SequentialCompositeMove};
 
@@ -285,33 +287,23 @@ where
         let right_id = encode_option_usize(right_val);
         let left_entity_id = encode_usize(self.left_entity_index);
         let right_entity_id = encode_usize(self.right_entity_index);
-        let variable_id = hash_str(self.binding.variable_name);
         let scope = MoveTabuScope::new(self.binding.descriptor_index, self.binding.variable_name);
-
-        MoveTabuSignature::new(
+        let entity_pair = ordered_coordinate_pair((left_entity_id, 0), (right_entity_id, 0));
+        let move_id = scoped_move_identity(
             scope,
-            smallvec![
-                encode_usize(self.binding.descriptor_index),
-                variable_id,
-                left_entity_id,
-                right_entity_id,
-                left_id,
-                right_id
-            ],
-            smallvec![
-                encode_usize(self.binding.descriptor_index),
-                variable_id,
-                left_entity_id,
-                right_entity_id,
-                left_id,
-                right_id
-            ],
-        )
-        .with_entity_tokens([
-            scope.entity_token(left_entity_id),
-            scope.entity_token(right_entity_id),
-        ])
-        .with_destination_value_tokens([scope.value_token(right_id), scope.value_token(left_id)])
+            TABU_OP_SWAP,
+            entity_pair.into_iter().map(|(entity_id, _)| entity_id),
+        );
+
+        MoveTabuSignature::new(scope, move_id.clone(), move_id)
+            .with_entity_tokens([
+                scope.entity_token(left_entity_id),
+                scope.entity_token(right_entity_id),
+            ])
+            .with_destination_value_tokens([
+                scope.value_token(right_id),
+                scope.value_token(left_id),
+            ])
     }
 }
 
@@ -669,7 +661,6 @@ where
         });
         let left_id = encode_option_usize(left_value);
         let right_id = encode_option_usize(right_value);
-        let variable_id = hash_str(self.binding.variable_name);
         let scope = MoveTabuScope::new(self.binding.descriptor_index, self.binding.variable_name);
         let mut entity_ids: SmallVec<[u64; 2]> = self
             .left_indices
@@ -685,25 +676,8 @@ where
             .map(|entity_id| scope.entity_token(entity_id))
             .collect();
 
-        let mut move_id = smallvec![
-            encode_usize(self.binding.descriptor_index),
-            variable_id,
-            encode_usize(self.left_indices.len()),
-            encode_usize(self.right_indices.len()),
-            left_id,
-            right_id
-        ];
-        move_id.extend(
-            self.left_indices
-                .iter()
-                .map(|&entity_index| encode_usize(entity_index)),
-        );
-        move_id.push(u64::MAX);
-        move_id.extend(
-            self.right_indices
-                .iter()
-                .map(|&entity_index| encode_usize(entity_index)),
-        );
+        let mut move_id = scoped_move_identity(scope, TABU_OP_PILLAR_SWAP, std::iter::empty());
+        append_canonical_usize_slice_pair(&mut move_id, &self.left_indices, &self.right_indices);
 
         MoveTabuSignature::new(scope, move_id.clone(), move_id)
             .with_entity_tokens(entity_tokens)

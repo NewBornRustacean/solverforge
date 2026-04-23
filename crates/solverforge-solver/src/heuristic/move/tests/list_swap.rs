@@ -166,3 +166,38 @@ fn invalid_position_not_doable() {
 
     assert!(!m.is_doable(&director));
 }
+
+#[test]
+fn list_swap_tabu_identity_is_direction_stable() {
+    let vehicles = vec![
+        Vehicle {
+            visits: vec![1, 2, 3],
+        },
+        Vehicle {
+            visits: vec![10, 20, 30],
+        },
+    ];
+    let mut director = create_director(vehicles);
+    let forward = ListSwapMove::<RoutingSolution, i32>::new(
+        0, 1, 1, 2, list_len, list_get, list_set, "visits", 0,
+    );
+    let forward_signature = forward.tabu_signature(&director);
+
+    {
+        let mut recording = RecordingDirector::new(&mut director);
+        forward.do_move(&mut recording);
+    }
+
+    let reverse_same_coordinates = ListSwapMove::<RoutingSolution, i32>::new(
+        0, 1, 1, 2, list_len, list_get, list_set, "visits", 0,
+    );
+    let reverse_flipped_coordinates = ListSwapMove::<RoutingSolution, i32>::new(
+        1, 2, 0, 1, list_len, list_get, list_set, "visits", 0,
+    );
+    let reverse_signature = reverse_same_coordinates.tabu_signature(&director);
+    let flipped_signature = reverse_flipped_coordinates.tabu_signature(&director);
+
+    assert_eq!(forward_signature.move_id, forward_signature.undo_move_id);
+    assert_eq!(forward_signature.move_id, reverse_signature.move_id);
+    assert_eq!(forward_signature.move_id, flipped_signature.move_id);
+}

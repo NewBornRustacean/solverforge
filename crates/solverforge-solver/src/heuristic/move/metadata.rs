@@ -2,7 +2,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 pub const NONE_ID: u64 = u64::MAX;
 pub type MoveIdentity = SmallVec<[u64; 8]>;
@@ -119,4 +119,48 @@ pub(crate) fn hash_debug<T: Debug>(value: &T) -> u64 {
 
 pub(crate) fn encode_option_debug<T: Debug>(value: Option<&T>) -> u64 {
     value.map_or(NONE_ID, hash_debug)
+}
+
+pub(crate) const TABU_OP_SWAP: u64 = 0xF000_0000_0000_0001;
+pub(crate) const TABU_OP_PILLAR_SWAP: u64 = 0xF000_0000_0000_0002;
+pub(crate) const TABU_OP_LIST_SWAP: u64 = 0xF000_0000_0000_0003;
+pub(crate) const TABU_OP_LIST_REVERSE: u64 = 0xF000_0000_0000_0004;
+
+pub(crate) fn scoped_move_identity(
+    scope: MoveTabuScope,
+    operation_id: u64,
+    components: impl IntoIterator<Item = u64>,
+) -> MoveIdentity {
+    let mut identity = smallvec![
+        operation_id,
+        encode_usize(scope.descriptor_index),
+        hash_str(scope.variable_name),
+    ];
+    identity.extend(components);
+    identity
+}
+
+pub(crate) fn ordered_coordinate_pair(first: (u64, u64), second: (u64, u64)) -> [(u64, u64); 2] {
+    if first <= second {
+        [first, second]
+    } else {
+        [second, first]
+    }
+}
+
+pub(crate) fn append_canonical_usize_slice_pair(
+    identity: &mut MoveIdentity,
+    left: &[usize],
+    right: &[usize],
+) {
+    let (first, second) = if left <= right {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    identity.push(encode_usize(first.len()));
+    identity.push(encode_usize(second.len()));
+    identity.extend(first.iter().map(|&idx| encode_usize(idx)));
+    identity.push(NONE_ID);
+    identity.extend(second.iter().map(|&idx| encode_usize(idx)));
 }

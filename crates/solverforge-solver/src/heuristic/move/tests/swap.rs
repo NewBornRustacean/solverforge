@@ -133,3 +133,49 @@ fn test_swap_entity_indices() {
     let m = SwapMove::<TaskSolution, i32>::new(2, 5, get_priority, set_priority, "priority", 0);
     assert_eq!(m.entity_indices(), &[2, 5]);
 }
+
+#[test]
+fn swap_tabu_identity_is_direction_stable() {
+    use crate::phase::localsearch::{Acceptor, TabuSearchAcceptor, TabuSearchPolicy};
+
+    let tasks = vec![
+        Task {
+            id: 0,
+            priority: Some(1),
+        },
+        Task {
+            id: 1,
+            priority: Some(5),
+        },
+    ];
+    let mut director = create_director(tasks);
+    let forward =
+        SwapMove::<TaskSolution, i32>::new(0, 1, get_priority, set_priority, "priority", 0);
+    let forward_signature = forward.tabu_signature(&director);
+
+    {
+        let mut recording = RecordingDirector::new(&mut director);
+        forward.do_move(&mut recording);
+    }
+
+    let reverse_same_coordinates =
+        SwapMove::<TaskSolution, i32>::new(0, 1, get_priority, set_priority, "priority", 0);
+    let reverse_flipped_coordinates =
+        SwapMove::<TaskSolution, i32>::new(1, 0, get_priority, set_priority, "priority", 0);
+    let reverse_signature = reverse_same_coordinates.tabu_signature(&director);
+    let flipped_signature = reverse_flipped_coordinates.tabu_signature(&director);
+
+    assert_eq!(forward_signature.move_id, forward_signature.undo_move_id);
+    assert_eq!(forward_signature.move_id, reverse_signature.move_id);
+    assert_eq!(forward_signature.move_id, flipped_signature.move_id);
+
+    let mut acceptor = TabuSearchAcceptor::<TaskSolution>::new(TabuSearchPolicy::move_only(10));
+    acceptor.phase_started(&SoftScore::of(-10));
+    acceptor.step_ended(&SoftScore::of(-9), Some(&forward_signature));
+
+    assert!(!acceptor.is_accepted(
+        &SoftScore::of(-9),
+        &SoftScore::of(-9),
+        Some(&reverse_signature)
+    ));
+}

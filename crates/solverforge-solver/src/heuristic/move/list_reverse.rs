@@ -11,12 +11,13 @@ Uses typed function pointers for list operations. No `dyn Any`, no downcasting.
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::Director;
 
 use super::metadata::{
-    encode_option_debug, encode_usize, hash_str, MoveTabuScope, ScopedValueTabuToken,
+    encode_option_debug, encode_usize, scoped_move_identity, MoveTabuScope, ScopedValueTabuToken,
+    TABU_OP_LIST_REVERSE,
 };
 use super::{Move, MoveTabuSignature};
 
@@ -212,21 +213,17 @@ where
             value_ids.push(encode_option_debug(value.as_ref()));
         }
         let entity_id = encode_usize(self.entity_index);
-        let variable_id = hash_str(self.variable_name);
         let scope = MoveTabuScope::new(self.descriptor_index, self.variable_name);
         let destination_value_tokens: SmallVec<[ScopedValueTabuToken; 2]> = value_ids
             .iter()
             .copied()
             .map(|value_id| scope.value_token(value_id))
             .collect();
-        let mut move_id = smallvec![
-            encode_usize(self.descriptor_index),
-            variable_id,
-            entity_id,
-            encode_usize(self.start),
-            encode_usize(self.end)
-        ];
-        move_id.extend(value_ids.iter().copied());
+        let move_id = scoped_move_identity(
+            scope,
+            TABU_OP_LIST_REVERSE,
+            [entity_id, encode_usize(self.start), encode_usize(self.end)],
+        );
 
         MoveTabuSignature::new(scope, move_id.clone(), move_id)
             .with_entity_tokens([scope.entity_token(entity_id)])

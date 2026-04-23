@@ -169,3 +169,42 @@ fn out_of_bounds_not_doable() {
 
     assert!(!m.is_doable(&director));
 }
+
+#[test]
+fn list_reverse_tabu_identity_is_direction_stable() {
+    let tours = vec![Tour {
+        cities: vec![1, 2, 3, 4, 5],
+    }];
+    let mut director = create_director(tours);
+    let forward = ListReverseMove::<TspSolution, i32>::new(
+        0,
+        1,
+        4,
+        list_len,
+        list_get,
+        list_reverse,
+        "cities",
+        0,
+    );
+    let forward_signature = forward.tabu_signature(&director);
+
+    {
+        let mut recording = RecordingDirector::new(&mut director);
+        forward.do_move(&mut recording);
+    }
+
+    let reverse = ListReverseMove::<TspSolution, i32>::new(
+        0,
+        1,
+        4,
+        list_len,
+        list_get,
+        list_reverse,
+        "cities",
+        0,
+    );
+    let reverse_signature = reverse.tabu_signature(&director);
+
+    assert_eq!(forward_signature.move_id, forward_signature.undo_move_id);
+    assert_eq!(forward_signature.move_id, reverse_signature.move_id);
+}

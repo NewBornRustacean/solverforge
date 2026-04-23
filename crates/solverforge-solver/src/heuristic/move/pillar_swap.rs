@@ -11,12 +11,13 @@ compile-time type safety. No runtime type checks or downcasting.
 
 use std::fmt::Debug;
 
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::Director;
 
 use super::metadata::{
-    encode_option_debug, encode_usize, hash_str, MoveTabuScope, ScopedEntityTabuToken, NONE_ID,
+    append_canonical_usize_slice_pair, encode_option_debug, encode_usize, scoped_move_identity,
+    MoveTabuScope, ScopedEntityTabuToken, TABU_OP_PILLAR_SWAP,
 };
 use super::{Move, MoveTabuSignature};
 
@@ -213,7 +214,6 @@ where
             .and_then(|&idx| (self.getter)(score_director.working_solution(), idx));
         let left_id = encode_option_debug(left_value.as_ref());
         let right_id = encode_option_debug(right_value.as_ref());
-        let variable_id = hash_str(self.variable_name);
         let scope = MoveTabuScope::new(self.descriptor_index, self.variable_name);
         let mut entity_ids: SmallVec<[u64; 2]> = self
             .left_indices
@@ -229,17 +229,8 @@ where
             .map(|entity_id| scope.entity_token(entity_id))
             .collect();
 
-        let mut move_id = smallvec![
-            encode_usize(self.descriptor_index),
-            variable_id,
-            encode_usize(self.left_indices.len()),
-            encode_usize(self.right_indices.len()),
-            left_id,
-            right_id
-        ];
-        move_id.extend(self.left_indices.iter().map(|&idx| encode_usize(idx)));
-        move_id.push(NONE_ID);
-        move_id.extend(self.right_indices.iter().map(|&idx| encode_usize(idx)));
+        let mut move_id = scoped_move_identity(scope, TABU_OP_PILLAR_SWAP, std::iter::empty());
+        append_canonical_usize_slice_pair(&mut move_id, &self.left_indices, &self.right_indices);
 
         MoveTabuSignature::new(scope, move_id.clone(), move_id)
             .with_entity_tokens(entity_tokens)

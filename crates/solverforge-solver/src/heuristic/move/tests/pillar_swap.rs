@@ -133,3 +133,62 @@ fn test_pillar_swap_empty_pillar_not_doable() {
     let m = PillarSwapMove::<Solution, i32>::new(vec![], vec![0], get_shift, set_shift, "shift", 0);
     assert!(!m.is_doable(&director));
 }
+
+#[test]
+fn pillar_swap_tabu_identity_is_direction_stable() {
+    let mut director = create_director(vec![
+        Employee {
+            id: 0,
+            shift: Some(1),
+        },
+        Employee {
+            id: 1,
+            shift: Some(1),
+        },
+        Employee {
+            id: 2,
+            shift: Some(2),
+        },
+        Employee {
+            id: 3,
+            shift: Some(2),
+        },
+    ]);
+    let forward = PillarSwapMove::<Solution, i32>::new(
+        vec![0, 1],
+        vec![2, 3],
+        get_shift,
+        set_shift,
+        "shift",
+        0,
+    );
+    let forward_signature = forward.tabu_signature(&director);
+
+    {
+        let mut recording = RecordingDirector::new(&mut director);
+        forward.do_move(&mut recording);
+    }
+
+    let reverse_same_coordinates = PillarSwapMove::<Solution, i32>::new(
+        vec![0, 1],
+        vec![2, 3],
+        get_shift,
+        set_shift,
+        "shift",
+        0,
+    );
+    let reverse_flipped_coordinates = PillarSwapMove::<Solution, i32>::new(
+        vec![2, 3],
+        vec![0, 1],
+        get_shift,
+        set_shift,
+        "shift",
+        0,
+    );
+    let reverse_signature = reverse_same_coordinates.tabu_signature(&director);
+    let flipped_signature = reverse_flipped_coordinates.tabu_signature(&director);
+
+    assert_eq!(forward_signature.move_id, forward_signature.undo_move_id);
+    assert_eq!(forward_signature.move_id, reverse_signature.move_id);
+    assert_eq!(forward_signature.move_id, flipped_signature.move_id);
+}

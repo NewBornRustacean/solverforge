@@ -15,7 +15,8 @@ use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::Director;
 
 use super::metadata::{
-    encode_option_debug, encode_usize, hash_str, MoveTabuScope, ScopedEntityTabuToken,
+    encode_option_debug, encode_usize, ordered_coordinate_pair, scoped_move_identity,
+    MoveTabuScope, ScopedEntityTabuToken, TABU_OP_LIST_SWAP,
 };
 use super::{Move, MoveTabuSignature};
 
@@ -285,38 +286,29 @@ where
         let second_id = encode_option_debug(second_val.as_ref());
         let first_entity_id = encode_usize(self.first_entity_index);
         let second_entity_id = encode_usize(self.second_entity_index);
-        let variable_id = hash_str(self.variable_name);
         let scope = MoveTabuScope::new(self.descriptor_index, self.variable_name);
         let mut entity_tokens: SmallVec<[ScopedEntityTabuToken; 2]> =
             smallvec![scope.entity_token(first_entity_id)];
         if !self.is_intra_list() {
             entity_tokens.push(scope.entity_token(second_entity_id));
         }
-
-        MoveTabuSignature::new(
+        let coordinate_pair = ordered_coordinate_pair(
+            (first_entity_id, encode_usize(self.first_position)),
+            (second_entity_id, encode_usize(self.second_position)),
+        );
+        let move_id = scoped_move_identity(
             scope,
-            smallvec![
-                encode_usize(self.descriptor_index),
-                variable_id,
-                first_entity_id,
-                encode_usize(self.first_position),
-                second_entity_id,
-                encode_usize(self.second_position),
-                first_id,
-                second_id
-            ],
-            smallvec![
-                encode_usize(self.descriptor_index),
-                variable_id,
-                first_entity_id,
-                encode_usize(self.first_position),
-                second_entity_id,
-                encode_usize(self.second_position),
-                first_id,
-                second_id
-            ],
-        )
-        .with_entity_tokens(entity_tokens)
-        .with_destination_value_tokens([scope.value_token(second_id), scope.value_token(first_id)])
+            TABU_OP_LIST_SWAP,
+            coordinate_pair
+                .into_iter()
+                .flat_map(|(entity_id, position)| [entity_id, position]),
+        );
+
+        MoveTabuSignature::new(scope, move_id.clone(), move_id)
+            .with_entity_tokens(entity_tokens)
+            .with_destination_value_tokens([
+                scope.value_token(second_id),
+                scope.value_token(first_id),
+            ])
     }
 }

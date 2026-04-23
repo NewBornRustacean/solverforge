@@ -11,11 +11,13 @@ compile-time type safety. No runtime type checks or downcasting.
 
 use std::fmt::Debug;
 
-use smallvec::smallvec;
 use solverforge_core::domain::PlanningSolution;
 use solverforge_scoring::Director;
 
-use super::metadata::{encode_option_debug, encode_usize, hash_str, MoveTabuScope};
+use super::metadata::{
+    encode_option_debug, encode_usize, ordered_coordinate_pair, scoped_move_identity,
+    MoveTabuScope, TABU_OP_SWAP,
+};
 use super::{Move, MoveTabuSignature};
 
 /// A move that swaps values between two entities.
@@ -193,32 +195,22 @@ where
         let right_id = encode_option_debug(right_val.as_ref());
         let left_entity_id = encode_usize(self.left_entity_index);
         let right_entity_id = encode_usize(self.right_entity_index);
-        let variable_id = hash_str(self.variable_name);
         let scope = MoveTabuScope::new(self.descriptor_index, self.variable_name);
-
-        MoveTabuSignature::new(
+        let entity_pair = ordered_coordinate_pair((left_entity_id, 0), (right_entity_id, 0));
+        let move_id = scoped_move_identity(
             scope,
-            smallvec![
-                encode_usize(self.descriptor_index),
-                variable_id,
-                left_entity_id,
-                right_entity_id,
-                left_id,
-                right_id
-            ],
-            smallvec![
-                encode_usize(self.descriptor_index),
-                variable_id,
-                left_entity_id,
-                right_entity_id,
-                left_id,
-                right_id
-            ],
-        )
-        .with_entity_tokens([
-            scope.entity_token(left_entity_id),
-            scope.entity_token(right_entity_id),
-        ])
-        .with_destination_value_tokens([scope.value_token(right_id), scope.value_token(left_id)])
+            TABU_OP_SWAP,
+            entity_pair.into_iter().map(|(entity_id, _)| entity_id),
+        );
+
+        MoveTabuSignature::new(scope, move_id.clone(), move_id)
+            .with_entity_tokens([
+                scope.entity_token(left_entity_id),
+                scope.entity_token(right_entity_id),
+            ])
+            .with_destination_value_tokens([
+                scope.value_token(right_id),
+                scope.value_token(left_id),
+            ])
     }
 }
