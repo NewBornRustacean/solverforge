@@ -430,6 +430,10 @@ Derives: `Debug, Clone, Default, Deserialize, Serialize`.
 |-------|------|
 | `selectors` | `Vec<MoveSelectorConfig>` |
 
+Runtime note: cartesian selectors compose children in selector order. The left
+child is previewed first, the right child is opened against that preview state,
+and the runtime rejects left-child previews that require full score evaluation.
+
 ### `ExhaustiveSearchConfig`
 
 Derives: `Debug, Clone, Default, Deserialize, Serialize`.
@@ -512,19 +516,19 @@ Derives: `Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize`.
 | Variant | Note |
 |---------|------|
 | `FirstFit` | **Default.** Generic first-fit construction over mixed or list-bearing `ModelContext` targets; pure scalar targets reuse the descriptor-scalar path |
-| `FirstFitDecreasing` | Specialized scalar-only first fit by entity difficulty |
-| `WeakestFit` | Specialized scalar-only weakest-fit heuristic |
-| `WeakestFitDecreasing` | Specialized scalar-only weakest-fit-by-difficulty heuristic |
-| `StrongestFit` | Specialized scalar-only strongest-fit heuristic |
-| `StrongestFitDecreasing` | Specialized scalar-only strongest-fit-by-difficulty heuristic |
+| `FirstFitDecreasing` | Specialized scalar-only first fit by entity difficulty; validates `construction_entity_order_key` |
+| `WeakestFit` | Specialized scalar-only weakest-fit heuristic; validates `construction_value_order_key` |
+| `WeakestFitDecreasing` | Specialized scalar-only weakest-fit-by-difficulty heuristic; validates both scalar order-key hooks |
+| `StrongestFit` | Specialized scalar-only strongest-fit heuristic; validates `construction_value_order_key` |
+| `StrongestFitDecreasing` | Specialized scalar-only strongest-fit-by-difficulty heuristic; validates both scalar order-key hooks |
 | `CheapestInsertion` | Generic best-score construction over mixed or list-bearing `ModelContext` targets; pure scalar targets reuse the descriptor-scalar path |
-| `AllocateEntityFromQueue` | Specialized scalar-only queue-driven allocation |
-| `AllocateToValueFromQueue` | Specialized scalar-only value-queue allocation |
-| `ListRoundRobin` | Specialized list-only even distribution |
-| `ListCheapestInsertion` | Specialized list-only score-minimizing insertion |
-| `ListRegretInsertion` | Specialized list-only highest-regret insertion |
-| `ListClarkeWright` | Specialized list-only greedy route merging by savings |
-| `ListKOpt` | Specialized list-only per-route k-opt polishing (k=2 = 2-opt) |
+| `AllocateEntityFromQueue` | Specialized scalar-only queue-driven allocation; validates `construction_entity_order_key` |
+| `AllocateToValueFromQueue` | Specialized scalar-only value-queue allocation; validates `construction_value_order_key` |
+| `ListRoundRobin` | Specialized list-only even distribution; validates the targeted list variable exists before phase build |
+| `ListCheapestInsertion` | Specialized list-only score-minimizing insertion; validates the targeted list variable exists before phase build |
+| `ListRegretInsertion` | Specialized list-only highest-regret insertion; validates the targeted list variable exists before phase build |
+| `ListClarkeWright` | Specialized list-only greedy route merging by savings; validates required `cw_*` hooks before phase build |
+| `ListKOpt` | Specialized list-only per-route k-opt polishing (k=2 = 2-opt); validates required `k_opt_*` hooks before phase build |
 
 ### `AcceptorConfig`
 
@@ -574,6 +578,10 @@ Derives: `Debug, Clone, Deserialize, Serialize`. Tagged `#[serde(tag = "type", r
 | `LimitedNeighborhood` | `LimitedNeighborhoodConfig` |
 | `UnionMoveSelector` | `UnionMoveSelectorConfig` |
 | `CartesianProductMoveSelector` | `CartesianProductConfig` |
+
+Decorator notes:
+- `LimitedNeighborhood` caps yielded candidates while preserving the wrapped selector order.
+- `CartesianProductMoveSelector` uses sequential preview, selector-order tabu ids, and selected-winner materialization rather than exposing an owned composite iterator.
 
 ## Architectural Notes
 

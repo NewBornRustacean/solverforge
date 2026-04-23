@@ -10,8 +10,26 @@ Use the scaffold as a thin starter, then model the real problem in your app.
 - When a scalar variable will use nearby local-search selectors, declare the
   nearby distance hook directly on that variable so the solver policy stays
   explicit and model-owned.
+- When a scalar construction heuristic needs sorted entity or value order,
+  declare that on the same `#[planning_variable]` with
+  `construction_entity_order_key = "fn_name"` and/or
+  `construction_value_order_key = "fn_name"`.
+- Keep list construction capabilities on `#[planning_list_variable]`. Clarke-Wright
+  and k-opt construction do not infer scalar order keys or alternate list hooks.
 - Add derived fields, validation helpers, and sample data beside the domain
   model, not in the scaffold templates.
+
+## Choose the right hook
+
+- Use `nearby_entity_distance_meter` or `nearby_value_distance_meter` when the
+  search neighborhood itself should be distance-pruned.
+- Use `construction_entity_order_key` when construction must rank entities
+  before generating placements.
+- Use `construction_value_order_key` when construction must rank candidate
+  values per entity, such as weakest-fit, strongest-fit, or queue-style
+  allocation.
+- Keep these separate. Nearby hooks guide local-search neighborhood shape;
+  construction order keys guide construction-phase ordering.
 
 ## When the scaffold is no longer enough
 

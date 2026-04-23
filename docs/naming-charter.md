@@ -36,6 +36,10 @@ SolverForge v0.9.0 uses `scalar` as the only canonical opposite of `list`.
 - `sub_list_*`
 - `iter_typed(...)`
 
-## Mapping decorator rule
+## List selector lifting rule
 
-List selector lifting uses the generic `MapMoveSelector` decorator. SolverForge does not keep one adapter type per list selector family.
+List selector lifting happens by assembling `ListMoveUnion` directly when each
+leaf selector opens its cursor. Cartesian-safe selector decorators stay
+same-type and cursor-native: filtering, sorting, shuffling, and probability
+operate on an existing selector surface instead of type-lifting moves through a
+generic map adapter.

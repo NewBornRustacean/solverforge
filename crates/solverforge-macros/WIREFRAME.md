@@ -51,6 +51,9 @@ Applies to structs. Adds derives: `Clone, Debug, PartialEq, Eq, ProblemFactImpl`
   `value_range = "name"` is accepted as an alias for `value_range_provider`
   canonical scalar nearby hooks are declared here as well:
   `nearby_value_distance_meter = "fn_name"` and `nearby_entity_distance_meter = "fn_name"`
+  scalar construction ordering hooks are declared here too:
+  `construction_entity_order_key = "fn_name"` and
+  `construction_value_order_key = "fn_name"`
 - `#[planning_list_variable(...)]` — list planning variable
   currently requires `Vec<usize>` and `element_collection = "solution_field"`
 - `#[planning_pin]` — boolean field controlling entity pinning
@@ -190,9 +193,9 @@ Trait impls like `Solvable`, `Analyzable`, and `ScoreAnalysis` reference `::solv
 
 `scalar_registry.rs` centralizes the generated scalar-variable metadata used by
 macro-built runtime assembly. Nearby scalar hooks, getter/setter accessors, and
-entity-local value providers are recorded there so emitted solving helpers can
-build typed `ScalarVariableContext` values without reviving old `standard_*`
-helper naming.
+entity-local value providers are recorded there alongside scalar construction
+order-key hooks so emitted solving helpers can build typed
+`ScalarVariableContext` values without reviving old `standard_*` helper naming.
 
 ### Shadow Variable Update Order
 

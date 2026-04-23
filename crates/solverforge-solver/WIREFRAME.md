@@ -24,30 +24,34 @@ Solver engine: phases, moves, selectors, acceptors, foragers, termination, and s
 src/
 ├── lib.rs                               — Crate root; module declarations, re-exports
 ├── solver.rs                            — Solver struct, SolveResult, impl_solver! macro
-├── runtime.rs                           — Runtime assembly and target matching over `ModelContext`; routes pure scalar generic construction to the descriptor-scalar path, uses the canonical construction engine for mixed/list-bearing targets, and delegates specialized list phases
-├── list_solver_tests.rs                 — Tests
-├── descriptor_scalar.rs               — Re-exports the explicit descriptor-scalar bindings, selectors, move types, and construction helpers
+├── runtime.rs                           — Runtime assembly and target matching over `ModelContext`; routes pure scalar generic construction to the descriptor-scalar path, uses capability-validated routing for scalar/list/mixed construction, and delegates specialized list phases
+├── runtime/
+│   ├── tests.rs                         — Runtime construction routing and target-validation tests
+│   └── list_tests.rs                    — Specialized list-construction runtime tests
+├── descriptor_scalar.rs               — Re-exports the explicit descriptor-scalar bindings, selectors, move types, and internal construction/runtime helpers
 ├── descriptor_scalar/
-│   ├── bindings.rs                      — Scalar-variable binding discovery, matching, and frontier-aware work checks
+│   ├── bindings.rs                      — Scalar-variable binding discovery, nearby hooks, scalar construction order keys, and frontier-aware work checks
 │   ├── move_types.rs                    — DescriptorChangeMove<S>, DescriptorSwapMove<S>, DescriptorPillarChangeMove<S>, DescriptorPillarSwapMove<S>, DescriptorRuinRecreateMove<S>, DescriptorScalarMoveUnion<S>
-│   ├── selectors.rs                     — DescriptorChangeMoveSelector<S>, DescriptorSwapMoveSelector<S>, DescriptorLeafSelector<S>, DescriptorFlatSelector<S>, DescriptorSelectorNode<S>, DescriptorSelector<S>, build_descriptor_move_selector(config, descriptor, random_seed); nearby selectors require descriptor-provided nearby meters, optional assigned variables can emit one `Some(v) -> None` change, top-level cartesian selectors build sequential composites, and scalar ruin-recreate uses the configured seed when provided
-│   ├── construction.rs                  — DescriptorConstruction<S>, DescriptorEntityPlacer<S>, build_descriptor_construction(); descriptor placements carry optional keep-current legality and slot identity
+│   ├── selectors.rs                     — DescriptorChangeMoveSelector<S>, DescriptorSwapMoveSelector<S>, DescriptorLeafSelector<S>, DescriptorFlatSelector<S>, DescriptorSelectorNode<S>, DescriptorSelector<S>, build_descriptor_move_selector(config, descriptor, random_seed); nearby selectors require descriptor-provided nearby meters, optional assigned variables can emit one `Some(v) -> None` change, top-level cartesian selectors expose borrowable sequential candidates, and scalar ruin-recreate uses the configured seed when provided
+│   ├── construction.rs                  — DescriptorConstruction<S>, DescriptorEntityPlacer<S>; runtime-only descriptor-scalar construction assembly from resolved scalar bindings with optional keep-current legality and slot identity
 │   └── tests.rs                         — Tests
-├── runtime_tests.rs                     — Tests
 ├── run.rs                               — AnyTermination, build_termination, run_solver(), run_solver_with_config()
 ├── run_tests.rs                         — Tests
 ├── builder/
 │   ├── mod.rs                           — Re-exports from all builder submodules
 │   ├── acceptor.rs                      — AnyAcceptor<S> enum, AcceptorBuilder
-│   ├── acceptor_tests.rs                — Tests
+│   ├── acceptor/tests.rs                — Tests
 │   ├── forager.rs                       — AnyForager<S> enum, ForagerBuilder
-│   ├── context.rs                       — ModelContext<S, V, DM, IDM>, VariableContext<S, V, DM, IDM>, IntraDistanceAdapter<T>, expanded ListVariableContext construction hooks
+│   ├── context.rs                       — ModelContext<S, V, DM, IDM>, VariableContext<S, V, DM, IDM>, IntraDistanceAdapter<T>, expanded scalar/list construction capability hooks
 │   ├── scalar_selector.rs               — Canonical typed scalar selector assembly, nearby scalar leaves, pillar legality filtering, ruin-recreate, and cartesian composition
+│   ├── scalar_selector/tests.rs         — Tests
 │   ├── selector.rs                      — Selector<S, V, DM, IDM>, Neighborhood<S, V, DM, IDM>, build_move_selector() over published ModelContext variable contexts
+│   ├── selector/tests.rs                — Tests
 │   ├── list_selector.rs                 — Re-exports list selector leaf and builder modules
 │   └── list_selector/
 │       ├── builder_impl.rs              — ListMoveSelectorBuilder
-│       └── leaf.rs                      — ListLeafSelector<S, V, DM, IDM> enum
+│       ├── leaf.rs                      — ListLeafSelector<S, V, DM, IDM> enum
+│       └── tests.rs                     — Tests
 ├── stats.rs                             — SolverStats, PhaseStats
 ├── test_utils.rs                        — TestSolution, TestDirector, NQueens helpers
 ├── test_utils_tests.rs                  — Tests
@@ -98,7 +102,7 @@ src/
 │       ├── mod.rs                       — Re-exports
 │       ├── entity.rs                    — EntitySelector trait, FromSolutionEntitySelector, AllEntitiesSelector
 │       ├── value_selector.rs              — ValueSelector trait, StaticValueSelector, FromSolutionValueSelector
-│       ├── move_selector.rs             — MoveSelector trait, ChangeMoveSelector, SwapMoveSelector, scalar union helpers; `ChangeMoveSelector::with_allows_unassigned()` enables `Some(v) -> None` generation for assigned optional variables
+│       ├── move_selector.rs             — MoveSelector trait, MoveCursor, MoveCandidateRef, ChangeMoveSelector, SwapMoveSelector, scalar union helpers; `ChangeMoveSelector::with_allows_unassigned()` enables `Some(v) -> None` generation for assigned optional variables
 │       ├── move_selector/either.rs      — ScalarChangeMoveSelector, ScalarSwapMoveSelector
 │       ├── list_change.rs              — ListChangeMoveSelector<S, V, ES>
 │       ├── list_support.rs             — Private selected-entity snapshots and exact list-neighborhood counting
@@ -123,19 +127,18 @@ src/
 │       ├── nearby_list_swap.rs         — NearbyListSwapMoveSelector
 │       ├── decorator/
 │       │   ├── mod.rs                   — Re-exports
-│       │   ├── cartesian_product.rs    — CartesianProductArena<S, M1, M2>, CartesianProductSelector<S, M, Left, Right>
-│       │   ├── cartesian_product_tests.rs — Tests
-│       │   ├── map.rs                  — MapMoveSelector<S, InM, OutM, Inner>
+│       │   ├── cartesian_product.rs    — CartesianProductArena<S, M1, M2>, CartesianProductCursor<S, M>, CartesianProductSelector<S, M, Left, Right>
+│       │   ├── cartesian_product/tests.rs — Tests
 │       │   ├── filtering.rs            — FilteringMoveSelector<S, M, Inner>
-│       │   ├── filtering_tests.rs      — Tests
+│       │   ├── filtering/tests.rs      — Tests
 │       │   ├── probability.rs          — ProbabilityMoveSelector<S, M, Inner>
-│       │   ├── probability_tests.rs    — Tests
+│       │   ├── probability/tests.rs    — Tests
 │       │   ├── shuffling.rs            — ShufflingMoveSelector<S, M, Inner>
-│       │   ├── shuffling_tests.rs      — Tests
+│       │   ├── shuffling/tests.rs      — Tests
 │       │   ├── sorting.rs              — SortingMoveSelector<S, M, Inner>
-│       │   ├── sorting_tests.rs        — Tests
+│       │   ├── sorting/tests.rs        — Tests
 │       │   ├── union.rs                — UnionMoveSelector<S, M, A, B>
-│       │   ├── union_tests.rs          — Tests
+│       │   ├── union/tests.rs          — Tests
 │       │   ├── vec_union.rs            — VecUnionSelector<S, M, Leaf> (Vec-backed union for config-driven composition)
 │       │   └── test_utils.rs           — Test helpers
 │       ├── k_opt/
@@ -169,38 +172,39 @@ src/
 │   │   ├── evaluation.rs                — Trial-move evaluation via RecordingDirector with exact rollback
 │   │   ├── frontier.rs                  — Revision-scoped ConstructionFrontier shared by generic scalar and list work
 │   │   ├── phase.rs                     — ConstructionHeuristicPhase<S, M, P, Fo>
+│   │   ├── phase/tests.rs               — Tests
 │   │   ├── forager.rs                   — ConstructionChoice enum, ConstructionForager trait, FirstFit/BestFit/FirstFeasible/WeakestFit/StrongestFit foragers
+│   │   ├── forager/tests.rs             — Tests
 │   │   ├── placer.rs                    — EntityPlacer trait, Placement, QueuedEntityPlacer, SortedEntityPlacer; queued placements expose optional keep-current legality
+│   │   ├── placer/tests.rs              — Tests
 │   │   ├── slot.rs                      — ConstructionSlotId and ConstructionListElementId for construction frontier tracking
-│   │   ├── engine.rs                    — Canonical generic scalar/list/mixed construction engine used by runtime assembly
-│   │   ├── phase_tests.rs              — Tests
-│   │   ├── forager_tests.rs            — Tests
-│   │   └── placer_tests.rs             — Tests
+│   │   ├── capabilities.rs              — Shared heuristic-to-capability routing and early validation for scalar/list construction
+│   │   └── engine.rs                    — Canonical generic scalar/list/mixed construction engine used by runtime assembly
 │   ├── localsearch/
 │   │   ├── mod.rs                       — LocalSearchConfig, AcceptorType, re-exports
 │   │   ├── phase.rs                     — LocalSearchPhase<S, M, MS, A, Fo>
+│   │   ├── phase/tests.rs               — Tests
 │   │   ├── forager.rs                   — LocalSearchForager trait, AcceptedCountForager, FirstAcceptedForager, BestScoreForager, re-exports
 │   │   ├── forager/improving.rs        — FirstBestScoreImprovingForager, FirstLastStepScoreImprovingForager
-│   │   ├── forager_tests.rs            — Tests
-│   │   ├── phase_tests.rs              — Tests
+│   │   ├── forager/tests.rs             — Tests
 │   │   └── acceptor/
 │   │       ├── mod.rs                   — Acceptor<S> trait, re-exports
 │   │       ├── hill_climbing.rs        — HillClimbingAcceptor
 │   │       ├── late_acceptance.rs      — LateAcceptanceAcceptor<S>
 │   │       ├── simulated_annealing.rs  — SimulatedAnnealingAcceptor
-│   │       ├── simulated_annealing_tests.rs — Tests
+│   │       ├── simulated_annealing/tests.rs — Tests
 │   │       ├── tabu_search.rs          — TabuSearchAcceptor<S>
 │   │       ├── entity_tabu.rs          — EntityTabuAcceptor
 │   │       ├── value_tabu.rs           — ValueTabuAcceptor
-│   │       ├── value_tabu_tests.rs     — Tests
+│   │       ├── value_tabu/tests.rs     — Tests
 │   │       ├── move_tabu.rs            — MoveTabuAcceptor
-│   │       ├── move_tabu_tests.rs      — Tests
+│   │       ├── move_tabu/tests.rs      — Tests
 │   │       ├── great_deluge.rs         — GreatDelugeAcceptor<S>
-│   │       ├── great_deluge_tests.rs   — Tests
+│   │       ├── great_deluge/tests.rs   — Tests
 │   │       ├── step_counting.rs        — StepCountingHillClimbingAcceptor<S>
-│   │       ├── step_counting_tests.rs  — Tests
+│   │       ├── step_counting/tests.rs  — Tests
 │   │       ├── diversified_late_acceptance.rs — DiversifiedLateAcceptanceAcceptor<S>
-│   │       ├── diversified_late_acceptance_tests.rs — Tests
+│   │       ├── diversified_late_acceptance/tests.rs — Tests
 │   │       └── tests.rs                — Tests
 │   ├── exhaustive/
 │   │   ├── mod.rs                       — ExhaustiveSearchPhase, ExhaustiveSearchConfig, ExplorationType
@@ -248,7 +252,7 @@ src/
 │   │   ├── list_construction/cheapest.rs — ListCheapestInsertionPhase
 │   │   ├── list_construction/regret.rs — ListRegretInsertionPhase
 │   │   ├── list_clarke_wright.rs       — ListClarkeWrightPhase
-│   │   ├── list_clarke_wright_tests.rs — Tests
+│   │   ├── list_clarke_wright/tests.rs — Tests
 │   │   ├── list_k_opt.rs               — ListKOptPhase
 │   │   ├── local_search.rs             — LocalSearchPhaseFactory
 │   │   └── k_opt.rs                     — KOptPhaseBuilder, KOptPhase
@@ -265,8 +269,7 @@ src/
 │   ├── mod_tests_integration/resume_support.rs — Resume and snapshot fixtures
 │   ├── mod_tests_integration/resume_tests.rs — Resume determinism tests
 │   ├── mod_tests_integration/analysis_tests.rs — Snapshot analysis retention tests
-│   ├── mod_tests_integration/runtime_helpers.rs — Shared telemetry helpers
-│   └── phase_factory_tests.rs          — Tests
+│   └── mod_tests_integration/runtime_helpers.rs — Shared telemetry helpers
 │
 ├── scope/
 │   ├── mod.rs                           — Re-exports
@@ -320,7 +323,7 @@ Moves are **never cloned**. Ownership transfers via `MoveArena` indices.
 - `ScopedValueTabuToken { scope, value_id }`
 - `MoveTabuSignature { scope, entity_tokens, destination_value_tokens, move_id, undo_move_id }`
 
-Entity and destination-value tabu memories compare scoped tokens directly, so equal raw ids from different descriptors or variables do not collide. Exact move memories still store ordered `move_id` and `undo_move_id` sequences without hashing away structure. True self-inverse coordinate moves, such as scalar swaps, pillar swaps, list swaps, and list reversals, use canonical coordinate identities for both fields so default move-tabu blocks non-aspirational immediate reversals while value tabu remains value-sensitive through scoped destination-value tokens.
+Entity and destination-value tabu memories compare scoped tokens directly, so equal raw ids from different descriptors or variables do not collide. Exact move memories still store ordered `move_id` and `undo_move_id` sequences without hashing away structure. Sequential composite moves use one shared selector-order composition rule for both fields, so cartesian reversals remain visible to move tabu and undo-move tabu. True self-inverse coordinate moves, such as scalar swaps, pillar swaps, list swaps, and list reversals, use canonical coordinate identities for both fields so default move-tabu blocks non-aspirational immediate reversals while value tabu remains value-sensitive through scoped destination-value tokens.
 
 ### `Phase<S: PlanningSolution, D: Director<S>, ProgressCb: ProgressCallback<S> = ()>` — `phase/mod.rs`
 
@@ -367,10 +370,17 @@ Requires: `Send + Debug`.
 
 ### `MoveSelector<S: PlanningSolution, M: Move<S>>` — `move_selector.rs`
 
+Selectors now expose cursor-owned storage plus borrowable candidates. The solver
+evaluates candidates by reference and only takes ownership of the chosen move by
+stable index. Convenience owned-stream helpers exist for arena-backed selectors,
+but cartesian composition is intentionally cursor-native and selected-winner
+materialization only.
+
 | Method | Signature |
 |--------|-----------|
-| `open_cursor` | `fn<'a, D: Director<S>>(&'a self, score_director: &D) -> impl Iterator<Item = M> + 'a` |
-| `iter_moves` | `fn<'a, D: Director<S>>(&'a self, score_director: &'a D) -> impl Iterator<Item = M> + 'a` |
+| `Cursor<'a>` | `type Cursor<'a>: MoveCursor<S, M> + 'a where Self: 'a` |
+| `open_cursor` | `fn<'a, D: Director<S>>(&'a self, score_director: &D) -> Self::Cursor<'a>` |
+| `iter_moves` | `fn<'a, D: Director<S>>(&'a self, score_director: &D) -> MoveSelectorIter<S, M, Self::Cursor<'a>>` |
 | `size` | `fn<D: Director<S>>(&self, score_director: &D) -> usize` |
 | `append_moves` | `fn<D: Director<S>>(&self, score_director: &D, arena: &mut MoveArena<M>)` |
 | `is_never_ending` | `fn(&self) -> bool` |
@@ -551,6 +561,10 @@ All moves are generic over `S` (solution) and `V` (value). All use typed `fn` po
 
 **`MoveArena<M>`** — O(1) arena allocator. `push()`, `take(index)`, `reset()`, `shuffle()`, `extend()`. Panics on double-take.
 
+**`MoveCursor<S, M>`** — cursor contract with `next_candidate()`, `candidate(index)`, and `take_candidate(index)`.
+
+**`MoveCandidateRef<'a, S, M>`** — borrowable move view: either `Borrowed(&M)` or `Sequential(SequentialCompositeMoveRef<'a, S, M>)`.
+
 **`CutPoint`** — `{ entity_index: usize, position: usize }`. Derives: Clone, Copy, Debug, Default, PartialEq, Eq.
 
 **`KOptReconnection`** — `{ segment_order: [u8; 6], reverse_mask: u8, len: u8 }`. Derives: Clone, Copy, Debug, PartialEq, Eq.
@@ -595,7 +609,10 @@ All moves are generic over `S` (solution) and `V` (value). All use typed `fn` po
 | `NearbyListSwapMoveSelector<S, V, D, ES>` | `ListSwapMove<S, V>` | Distance-pruned swap with canonical pair ordering |
 | `RuinMoveSelector<S, V>` | `RuinMove<S, V>` | Scalar variable LNS |
 
-**`MapMoveSelector<S, InM, OutM, Inner>`** lifts a concrete selector into a union surface without a per-family adapter type. The canonical list builder uses it to map concrete list selectors into `ListMoveUnion<S, V>`.
+List-selector lifting is direct union assembly. The canonical list builder opens
+concrete list leaves straight into `ListMoveUnion<S, V>` at leaf-open time, so
+cartesian-safe decorators stay same-type and cursor-native instead of relying
+on a generic type-lifting map adapter.
 
 ### Selector Decorators
 
@@ -603,12 +620,12 @@ All moves are generic over `S` (solution) and `V` (value). All use typed `fn` po
 |-----------|-------------|------|
 | `UnionMoveSelector<S, M, A, B>` | Two selectors | Sequential combination |
 | `CartesianProductArena<S, M1, M2>` | Two move types | Cross-product iteration arena |
-| `CartesianProductSelector<S, M, Left, Right>` | Two selectors plus a wrapping function | Preview-state sequential composition into owned composite moves |
-| `MapMoveSelector<S, InM, OutM, Inner>` | Concrete selector plus mapping function | Generic typed lifting without wrapper families |
-| `FilteringMoveSelector<S, M, Inner>` | Predicate `fn(&M) -> bool` | Filters moves |
-| `ShufflingMoveSelector<S, M, Inner>` | RNG | Randomizes order |
-| `SortingMoveSelector<S, M, Inner>` | Comparator `fn(&M, &M) -> Ordering` | Sorts moves |
-| `ProbabilityMoveSelector<S, M, Inner>` | Weight `fn(&M) -> f64` | Probabilistic filtering |
+| `CartesianProductCursor<S, M>` | One move type | Cursor-backed sequential preview rows with stable pair indices |
+| `CartesianProductSelector<S, M, Left, Right>` | Two selectors plus a wrapping function | Preview-state sequential composition with borrowable candidates, selected-winner materialization, and pure upper-bound `size()` |
+| `FilteringMoveSelector<S, M, Inner>` | Predicate `for<'a> fn(MoveCandidateRef<'a, S, M>) -> bool` | Filters moves without reopening cartesian children |
+| `ShufflingMoveSelector<S, M, Inner>` | RNG | Randomizes order without type-lifting moves |
+| `SortingMoveSelector<S, M, Inner>` | Comparator `for<'a> fn(MoveCandidateRef<'a, S, M>, MoveCandidateRef<'a, S, M>) -> Ordering` | Sorts borrowable candidates without reopening cartesian children |
+| `ProbabilityMoveSelector<S, M, Inner>` | Weight `for<'a> fn(MoveCandidateRef<'a, S, M>) -> f64` | Probabilistic filtering without reopening cartesian children |
 
 ### Supporting Types
 
@@ -624,9 +641,16 @@ All moves are generic over `S` (solution) and `V` (value). All use typed `fn` po
 
 **`KOptConfig`** — `{ k: usize, min_segment_len: usize, limited_patterns: bool }`. Methods: `new(k)`, `with_min_segment_len()`, `with_limited_patterns()`.
 
-**`ScalarVariableContext<S>`** — `builder/context.rs`. Canonical scalar-variable metadata used by the typed runtime. In addition to getter/setter/value-source hooks it now carries optional nearby hooks via builder-style methods:
+**`ScalarVariableContext<S>`** — `builder/context.rs`. Canonical scalar-variable metadata used by the typed runtime. In addition to getter/setter/value-source hooks it now carries optional nearby hooks and scalar construction order-key hooks via builder-style methods:
 - `with_nearby_value_distance_meter(fn(&S, usize, usize) -> f64)` for nearby change
 - `with_nearby_entity_distance_meter(fn(&S, usize, usize) -> f64)` for nearby swap
+- `with_construction_entity_order_key(fn(&S, usize) -> i64)` for decreasing or queue-style entity ordering
+- `with_construction_value_order_key(fn(&S, usize, usize) -> i64)` for weakest-fit, strongest-fit, or queue-style value ordering
+
+Runtime scalar construction resolves one canonical binding set per variable by
+overlaying these runtime hooks onto descriptor-discovered scalar bindings by
+descriptor index, entity type name, and variable name. Validation and execution
+use that same resolved binding set.
 
 **`IntraDistanceAdapter<T>`** — `builder/context.rs`. Newtype wrapping `T: CrossEntityDistanceMeter<S>`. Implements `ListPositionDistanceMeter<S>` by forwarding to `T::distance` with `src_entity_idx == dst_entity_idx`. Used by `ListMoveSelectorBuilder::push_kopt` when `max_nearby > 0`.
 
@@ -636,7 +660,13 @@ All moves are generic over `S` (solution) and `V` (value). All use typed `fn` po
 
 ### Construction Heuristic
 
-**`ConstructionHeuristicPhase<S, M, P, Fo>`** — Bounds: `P: EntityPlacer<S, M>`, `Fo: ConstructionForager<S, M>`.
+**`ConstructionHeuristicPhase<S, M, P, Fo>`** — Bounds: `P: EntityPlacer<S, M>`, `Fo: ConstructionForager<S, M>`. `with_live_placement_refresh()` switches order-sensitive scalar heuristics from phase-start placement snapshots to per-step recomputation.
+
+Runtime routing is capability-driven:
+- pure scalar `FirstFit` and `CheapestInsertion` reuse the descriptor-scalar path
+- scalar-only heuristics validate required scalar order-key hooks from the resolved descriptor-plus-runtime binding set before phase build
+- list-only heuristics validate required `cw_*` or `k_opt_*` hooks before phase build
+- generic mixed construction stays in the canonical engine
 
 Construction foragers:
 
@@ -645,14 +675,14 @@ Construction foragers:
 | `FirstFitForager<S, M>` | First doable move |
 | `BestFitForager<S, M>` | Best scoring move |
 | `FirstFeasibleForager<S, M>` | First feasible move |
-| `WeakestFitForager<S, M>` | Lowest strength move |
-| `StrongestFitForager<S, M>` | Highest strength move |
+| `WeakestFitForager<S, M>` | Lowest live strength on the current working solution; when optional keep-current legality is enabled, keeps `None` unless the selected move strictly beats the current legal baseline |
+| `StrongestFitForager<S, M>` | Highest live strength on the current working solution; when optional keep-current legality is enabled, keeps `None` unless the selected move strictly beats the current legal baseline |
 
 Entity placers:
 
 | Placer | Note |
 |--------|------|
-| `QueuedEntityPlacer<S, V, ES, VS>` | Iterates entities, generates ChangeMove per value, and can mark keep-current as legal for optional variables via `.with_allows_unassigned(true)` |
+| `QueuedEntityPlacer<S, V, ES, VS>` | Iterates entities, generates ChangeMove per value, and can mark keep-current as legal for optional variables via `.with_allows_unassigned(true)` so weakest-fit and strongest-fit may legally keep `None` |
 | `SortedEntityPlacer<S, M, Inner>` | Wraps placer, sorts entities by comparator |
 
 **`Placement<S, M>`** — public fields `{ entity_ref: EntityReference, moves: Vec<M> }`; methods `is_empty()`, `with_keep_current_legal()`, `keep_current_legal()`, `take_move()`.

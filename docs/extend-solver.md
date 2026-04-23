@@ -25,6 +25,26 @@ application that depends on `solverforge`.
   only human-facing rates are derived at the edge.
 - Prefer small, app-specific extensions over forking the scaffold templates.
 
+## Construction routing
+
+Construction heuristics now route by validated model capability rather than
+ad hoc special cases:
+
+- `first_fit` and `cheapest_insertion` stay generic for mixed or list-bearing
+  targets, but pure scalar targets reuse the descriptor-scalar path.
+- `first_fit_decreasing`, `weakest_fit*`, `strongest_fit*`,
+  `allocate_entity_from_queue`, and `allocate_to_value_from_queue` are scalar-only.
+  The targeted scalar variable must declare the required
+  `construction_entity_order_key` and/or `construction_value_order_key`.
+  Manual `ModelContext` assembly can provide the same hooks at runtime; the
+  scalar route resolves one binding set from descriptor metadata plus runtime
+  scalar-variable hooks and uses that same resolved set for validation and
+  execution.
+- `list_round_robin`, `list_cheapest_insertion`, `list_regret_insertion`,
+  `list_clarke_wright`, and `list_k_opt` are list-only. The runtime validates
+  the required list hooks before phase build instead of failing deep inside the
+  algorithm.
+
 ## Canonical selector defaults
 
 If `move_selector` is omitted, the runtime keeps one streaming-first default
@@ -44,6 +64,12 @@ does not guess one.
 when that cap is part of the search policy. The canonical defaults are already
 explicit streaming neighborhoods, so use the cap deliberately instead of
 wrapping broad generation by default.
+
+Cartesian neighborhoods compose selectors sequentially. The left child is
+previewed first, the right child is opened against that preview state, and the
+runtime only materializes the selected winning composite move by ownership after
+forager choice. Left children that require full score evaluation during preview
+are rejected up front.
 
 ## Practical path
 

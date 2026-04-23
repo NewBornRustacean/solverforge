@@ -39,6 +39,7 @@ Start new projects with the standalone [`solverforge-cli`](https://github.com/so
 The current CLI scaffolds a neutral shell via `solverforge new <name>`. You shape that shell afterward with `solverforge generate ...`, adding facts, entities, variables, constraints, and generated data as the domain becomes concrete. Generated applications can mix scalar planning variables with multiple independent planning lists, and the emitted code targets the same retained-runtime facade documented in this repository.
 The generated runtime now builds one `ModelContext` for every planning model. Generic `FirstFit` and `CheapestInsertion` use the canonical construction engine when matching list work is present, while pure scalar targets reuse the descriptor-scalar path. Specialized list heuristics such as round-robin, regret insertion, Clarke-Wright, and list K-opt remain explicit opt-in phases.
 Scalar variables declared with `allows_unassigned = true` keep optional-assignment semantics in that runtime: stock construction can keep `None` when it is the best legal baseline, revision-advancing mutations reopen those completed optional slots for reconsideration, and stock local search can both assign and unassign.
+Scalar construction heuristics that sort entities or values declare those capabilities explicitly on `#[planning_variable]`: use `construction_entity_order_key = "fn_name"` for entity-priority ordering and `construction_value_order_key = "fn_name"` for weakest/strongest-fit and queue-style value ordering. Those hooks are evaluated against the live working solution at each construction step, not cached once at phase start.
 Generated applications and normal `solverforge` facade usage keep the same syntax. The recent construction unification only changes advanced direct `solverforge-solver` runtime assembly APIs.
 
 ## Extend the Scaffold
@@ -81,7 +82,7 @@ Current public naming follows neutral Rust contracts rather than `Typed*` prefix
   - Exhaustive Search (Branch and Bound with DFS/BFS/Score-First)
   - Partitioned Search (multi-threaded via rayon)
   - VND (Variable Neighborhood Descent)
-- **Move System**: Zero-allocation typed moves with arena-based ownership
+- **Move System**: Zero-allocation typed moves with cursor-scoped ownership and selected-winner materialization
   - Scalar: ChangeMove, SwapMove, PillarChangeMove, PillarSwapMove, RuinMove
   - List: ListChangeMove, ListSwapMove, SublistChangeMove, SublistSwapMove, KOptMove, ListRuinMove
   - Nearby selection for list moves
@@ -172,6 +173,15 @@ uses `nearby_change_move_selector` or `nearby_swap_move_selector`, declare the
 matching hook on the variable with
 `#[planning_variable(nearby_value_distance_meter = "...")]` and/or
 `#[planning_variable(nearby_entity_distance_meter = "...")]`.
+
+Scalar construction ordering is model-provided too. If a construction phase uses
+`first_fit_decreasing`, `weakest_fit*`, `strongest_fit*`,
+`allocate_entity_from_queue`, or `allocate_to_value_from_queue`, declare the
+matching `construction_entity_order_key = "..."` and/or
+`construction_value_order_key = "..."` hook on that scalar variable. SolverForge
+re-evaluates those hooks on the current working solution at every construction
+step, so queue-style and weakest/strongest-fit heuristics track the live model
+state instead of a phase-start snapshot.
 
 ### 2. Define Constraints
 
@@ -513,6 +523,9 @@ Typical throughput: 300k-1M moves/second depending on constraint complexity for 
 
 - **Scalar is now the canonical public name for non-list planning variables**: runtime metadata, macro-generated helpers, solve-shape output, and the coordinated docs surface now use `scalar` terminology consistently.
 - **Scalar nearby selectors are model-declared capabilities**: `#[planning_variable]` supports `nearby_value_distance_meter` and `nearby_entity_distance_meter`, and runtime assembly threads those hooks through the canonical typed scalar contexts.
+- **Scalar construction ordering is model-declared too**: `#[planning_variable]` now supports `construction_entity_order_key` and `construction_value_order_key`, and scalar-only construction heuristics validate those hooks before phase build.
+- **Construction routing is capability-driven**: scalar-only heuristics route through the descriptor-scalar engine, list-only heuristics validate the existing list hook surface before build, and generic `FirstFit` / `CheapestInsertion` stay on the mixed engine when matching list work is present.
+- **Move selectors are cursor-based**: `open_cursor()` now yields stable candidate indices plus borrowable candidates, cartesian neighborhoods stay preview-safe and cursor-native, and ownership materializes only for the selected winner. Convenience owned-stream helpers such as `iter_moves()` and `append_moves()` are not a cartesian-safe contract.
 - **Scalar solve startup telemetry now reports candidates instead of descriptor slots**: runtime logging estimates the average candidate count per scalar slot from range providers and countable ranges, and the console labels scalar solve startup scale as `candidates` with no legacy `values` fallback.
 
 ### What's New in 0.8.12
@@ -524,7 +537,7 @@ Typical throughput: 300k-1M moves/second depending on constraint complexity for 
 ### What's New in 0.8.11
 
 - **Limited neighborhoods**: `limited_neighborhood` now carries move caps at the neighborhood level instead of exposing a selector decorator wrapper.
-- **Lazy change-value iteration**: `ChangeMoveSelector` now keeps per-entity value iteration lazy so cursor limits and early-stop search paths avoid unnecessary candidate generation.
+- **Selector ownership is cursor-scoped**: selectors now keep candidate storage on the cursor side so search phases can evaluate borrowable candidates and materialize owned moves only when a forager commits to one.
 
 ### What's New in 0.8.8
 

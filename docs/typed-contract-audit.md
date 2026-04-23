@@ -56,6 +56,16 @@ Audit the former `Typed*` / `typed_*` public surface, explain the architectural 
 - Macro expansion paths and facade re-exports are updated in the same change as the core and solver renames.
 - Relevant wireframes are updated in lockstep so the documented public surface matches the implemented API.
 - The selector method name is now `iter(...)` across the public value-selector surface. The old `iter_typed(...)` name is removed as part of the same breaking sweep so the typed/scalar naming model stays consistent.
+- The move-selector surface now uses cursor/materialization semantics: `open_cursor(...)`
+  yields stable candidate indices plus borrowable move views, and ownership
+  transfers only through `take_candidate(...)` after the solver selects a
+  winner. Cartesian composition reuses that contract to expose preview-safe
+  sequential candidates without cloning move storage, and it is intentionally
+  not a general owned-stream selector contract through `iter_moves(...)` or
+  `append_moves(...)`.
+- Scalar construction order hooks now mean live model hooks, not phase-start
+  snapshots. Weakest-fit, strongest-fit, decreasing, and queue-style scalar
+  heuristics re-evaluate the current working solution at each construction step.
 
 ## Risk summary
 
@@ -66,4 +76,7 @@ Audit the former `Typed*` / `typed_*` public surface, explain the architectural 
 ## Conclusion
 
 - The repository now has one neutral selector/extractor naming model with the intentional erased descriptor boundary preserved.
+- The selector contract is no longer "owned iterator first". Cursor-owned
+  storage and selected-winner materialization are now part of the canonical
+  `MoveSelector` boundary.
 - The synthesis branch combines the implementation intent from the code draft with the explanatory audit intent from the two documentation drafts, while also covering the additional `PerEntityTypedValueSelector` surface that existed on `release/0.7.0`.

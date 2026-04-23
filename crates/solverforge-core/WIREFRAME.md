@@ -480,12 +480,14 @@ pub struct VariableDescriptor {
     pub entity_value_provider: Option<UsizeEntityValueProvider>,
     pub nearby_value_distance_meter: Option<UsizeNearbyValueDistanceMeter>,
     pub nearby_entity_distance_meter: Option<UsizeNearbyEntityDistanceMeter>,
+    pub construction_entity_order_key: Option<UsizeConstructionEntityOrderKey>,
+    pub construction_value_order_key: Option<UsizeConstructionValueOrderKey>,
 }
 ```
 
 Constructors: `genuine(&str)`, `chained(&str)`, `list(&str)`, `shadow(&str, ShadowVariableKind)`, `piggyback(&str, &str)`
 
-Builder methods: `with_value_range()`, `with_allows_unassigned()`, `with_value_range_type()`, `with_source()`, `with_usize_accessors()`, `with_entity_value_provider()`, `with_nearby_value_distance_meter()`, `with_nearby_entity_distance_meter()`
+Builder methods: `with_value_range()`, `with_allows_unassigned()`, `with_value_range_type()`, `with_source()`, `with_usize_accessors()`, `with_entity_value_provider()`, `with_nearby_value_distance_meter()`, `with_nearby_entity_distance_meter()`, `with_construction_entity_order_key()`, `with_construction_value_order_key()`
 
 ### Supply Types
 

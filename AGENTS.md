@@ -95,6 +95,8 @@ Intentional type-erasure boundaries that should not be "fixed":
 
 Moves are never cloned in the solver path. The forager stores arena indices, and the selected move is taken from the arena by ownership.
 
+Selector cursors own move storage. Search phases evaluate borrowable candidates by stable index and materialize exactly the selected winner by ownership. Do not reintroduce owned `open_cursor()` streams for cartesian composition.
+
 Clone is acceptable only for:
 
 1. Solution snapshots sent through channels.
@@ -106,6 +108,7 @@ List, nearby-list, and sublist selector cursor paths are production hot loops.
 
 - Preserve canonical enumeration order. Seeded order drift is a regression.
 - Generated moves from finite selectors must remain `is_doable`.
+- Cartesian selectors must keep preview-safe left-child validation, selector-order tabu composition, and borrowable sequential candidates.
 - Benchmark touched neighborhood families in release mode before and after refactors.
 - Shared helpers are acceptable for selected-entity snapshots, candidate ordering, and exact `size()` accounting, but keep `open_cursor()` loops explicit when abstraction hurts throughput or clarity.
 - Do not accept a median throughput regression greater than 5% without explicit user approval.
@@ -135,6 +138,7 @@ Avoid `#[derive(Clone)]` on generic types when it would introduce unnecessary bo
 - Prefer doctests for public APIs when practical, and make them compile meaningfully.
 - Keep examples and scaffold-facing guidance on the public fluent API surface. If an example requires internal wiring, improve the public API instead.
 - Canonical multi-file move and selector behavior tests belong under subsystem `tests/` trees. Do not reintroduce parallel `*_tests.rs` siblings once coverage has been consolidated.
+- When selector or construction behavior changes, update the dedicated `tests/` tree for that subsystem instead of adding ad hoc sibling test entrypoints.
 
 ## Change Policy
 
