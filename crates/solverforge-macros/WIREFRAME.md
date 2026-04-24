@@ -20,10 +20,14 @@ src/
 ├── entrypoints.rs          — Shared proc-macro wrapper logic used by the crate root
 ├── lib.rs                  — Crate root; required proc-macro entry points only
 ├── planning_model.rs       — `planning_model!` manifest parser, file reader, metadata validator, and model-support generator
+├── planning_model/*.rs     — Manifest parsing, module loading, metadata validation, support generation, shadow generation, and tests split by responsibility
 ├── planning_entity.rs      — PlanningEntityImpl derive module root
 ├── planning_entity/*.rs    — Entity derive expansion, list-variable helpers, and tests
+├── planning_entity/expand/*.rs — Entity derive expansion and validation helpers
 ├── planning_solution.rs    — PlanningSolutionImpl derive module root
 ├── planning_solution/*.rs  — Solution derive expansion, runtime/shadow helpers, list operations, and tests
+├── planning_solution/list_operations/*.rs — Entity-collection list runtime helpers and public list-method generation
+├── planning_solution/runtime/*.rs — Runtime solve, scalar setup, phase support, and solvable/analyzable generation
 └── problem_fact.rs         — ProblemFactImpl derive: ProblemFact, PlanningId, problem_fact_descriptor()
 ```
 

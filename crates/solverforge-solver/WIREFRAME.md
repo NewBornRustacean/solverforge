@@ -28,14 +28,17 @@ src/
 ├── model_support.rs                     — Hidden `PlanningModelSupport` trait implemented by `planning_model!` for model-owned scalar hook attachment, model validation, and shadow updates
 ├── runtime/
 │   ├── tests.rs                         — Runtime construction routing and target-validation tests
+│   ├── tests/*.rs                       — Runtime test fixtures split by scalar, queue, revision, multi-owner, and mixed-target behavior
 │   └── list_tests.rs                    — Specialized list-construction runtime tests
 ├── descriptor_scalar.rs               — Re-exports the explicit descriptor-scalar bindings, selectors, move types, and internal construction/runtime helpers
 ├── descriptor_scalar/
 │   ├── bindings.rs                      — Scalar-variable binding discovery, nearby hooks, scalar construction order keys, and frontier-aware work checks
 │   ├── move_types.rs                    — DescriptorChangeMove<S>, DescriptorSwapMove<S>, DescriptorPillarChangeMove<S>, DescriptorPillarSwapMove<S>, DescriptorRuinRecreateMove<S>, DescriptorScalarMoveUnion<S>
+│   ├── move_types/*.rs                  — Descriptor scalar move implementations split by move family
 │   ├── selectors.rs                     — DescriptorChangeMoveSelector<S>, DescriptorSwapMoveSelector<S>, DescriptorLeafSelector<S>, DescriptorFlatSelector<S>, DescriptorSelectorNode<S>, DescriptorSelector<S>, build_descriptor_move_selector(config, descriptor, random_seed); nearby selectors require descriptor-provided nearby meters, optional assigned variables can emit one `Some(v) -> None` change, top-level cartesian selectors expose borrowable sequential candidates, and scalar ruin-recreate uses the configured seed when provided
+│   ├── selectors/*.rs                   — Descriptor scalar selector legality, leaf, dispatch, and builder chunks split by neighborhood family
 │   ├── construction.rs                  — DescriptorConstruction<S>, DescriptorEntityPlacer<S>; runtime-only descriptor-scalar construction assembly from resolved scalar bindings with optional keep-current legality and slot identity
-│   └── tests.rs                         — Tests
+│   └── tests.rs                         — Descriptor-scalar test root with support/construction/selector/ruin-recreate chunks under `tests/mod/`
 ├── run.rs                               — AnyTermination, build_termination, run_solver(), run_solver_with_config()
 ├── run_tests.rs                         — Tests
 ├── builder/
@@ -45,12 +48,15 @@ src/
 │   ├── forager.rs                       — AnyForager<S> enum, ForagerBuilder
 │   ├── context.rs                       — ModelContext<S, V, DM, IDM>, VariableContext<S, V, DM, IDM>, IntraDistanceAdapter<T>, index-addressed scalar metadata, expanded scalar/list construction capability hooks
 │   ├── scalar_selector.rs               — Canonical typed scalar selector assembly over index-addressed scalar contexts, nearby scalar leaves, pillar legality filtering, ruin-recreate, and cartesian composition
-│   ├── scalar_selector/tests.rs         — Tests
+│   ├── scalar_selector/*.rs             — Typed scalar value, leaf, dispatch, and build chunks
+│   ├── scalar_selector/tests.rs         — Typed scalar selector test root with change/swap, nearby/ruin, pillar, and cartesian chunks
 │   ├── selector.rs                      — Selector<S, V, DM, IDM>, Neighborhood<S, V, DM, IDM>, build_move_selector() over published ModelContext variable contexts
-│   ├── selector/tests.rs                — Tests
+│   ├── selector/*.rs                    — Mixed scalar/list neighborhood move, family classification, and builder chunks
+│   ├── selector/tests.rs                — Mixed selector test root with support, defaults, cartesian, and phase chunks
 │   ├── list_selector.rs                 — Re-exports list selector leaf and builder modules
 │   └── list_selector/
 │       ├── builder_impl.rs              — ListMoveSelectorBuilder
+│       ├── builder_impl/*.rs            — List selector node/cursor and builder implementation chunks
 │       ├── leaf.rs                      — ListLeafSelector<S, V, DM, IDM> enum
 │       └── tests.rs                     — Tests
 ├── stats.rs                             — SolverStats, PhaseStats
@@ -104,6 +110,7 @@ src/
 │       ├── entity.rs                    — EntitySelector trait, FromSolutionEntitySelector, AllEntitiesSelector
 │       ├── value_selector.rs              — ValueSelector trait, StaticValueSelector, FromSolutionValueSelector
 │       ├── move_selector.rs             — MoveSelector trait, MoveCursor, MoveCandidateRef, ChangeMoveSelector, SwapMoveSelector, scalar union helpers; `ChangeMoveSelector::with_allows_unassigned()` enables `Some(v) -> None` generation for assigned optional variables
+│       ├── move_selector/*.rs           — Borrowed candidate cursor, iterator adapter, change selector, and swap selector implementation chunks
 │       ├── move_selector/either.rs      — ScalarChangeMoveSelector, ScalarSwapMoveSelector
 │       ├── list_change.rs              — ListChangeMoveSelector<S, V, ES>
 │       ├── list_support.rs             — Private selected-entity snapshots and exact list-neighborhood counting
@@ -173,14 +180,16 @@ src/
 │   │   ├── evaluation.rs                — Trial-move evaluation via RecordingDirector with exact rollback
 │   │   ├── frontier.rs                  — Revision-scoped ConstructionFrontier shared by generic scalar and list work
 │   │   ├── phase.rs                     — ConstructionHeuristicPhase<S, M, P, Fo>
-│   │   ├── phase/tests.rs               — Tests
+│   │   ├── phase/*.rs                   — Construction phase type and selection helpers
+│   │   ├── phase/tests.rs               — Construction phase test root with support, selection, and lifecycle chunks
 │   │   ├── forager.rs                   — ConstructionChoice enum, ConstructionForager trait, FirstFit/BestFit/FirstFeasible/WeakestFit/StrongestFit foragers
 │   │   ├── forager/tests.rs             — Tests
 │   │   ├── placer.rs                    — EntityPlacer trait, Placement, QueuedEntityPlacer, SortedEntityPlacer; queued placements expose optional keep-current legality
 │   │   ├── placer/tests.rs              — Tests
 │   │   ├── slot.rs                      — ConstructionSlotId and ConstructionListElementId for construction frontier tracking
 │   │   ├── capabilities.rs              — Shared heuristic-to-capability routing and early validation for scalar/list construction
-│   │   └── engine.rs                    — Canonical generic scalar/list/mixed construction engine used by runtime assembly
+│   │   ├── engine.rs                    — Canonical generic scalar/list/mixed construction engine used by runtime assembly
+│   │   └── engine/*.rs                  — Generic construction candidate, scan, commit, and target-matching chunks
 │   ├── localsearch/
 │   │   ├── mod.rs                       — LocalSearchConfig, AcceptorType, re-exports
 │   │   ├── phase.rs                     — LocalSearchPhase<S, M, MS, A, Fo>
@@ -275,6 +284,7 @@ src/
 ├── scope/
 │   ├── mod.rs                           — Re-exports
 │   ├── solver.rs                        — SolverScope<'t, S, D, ProgressCb = ()>, ProgressCallback trait, lifecycle-aware SolveResult
+│   ├── solver/*.rs                      — Solver progress callback and scope implementation chunks
 │   ├── phase.rs                         — PhaseScope<'t, 'a, S, D, BestCb = ()>
 │   ├── step.rs                          — StepScope<'t, 'a, 'b, S, D, BestCb = ()>
 │   └── tests.rs                         — Tests
