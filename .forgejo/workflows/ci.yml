@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, release/*, feature/*]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check
+    runs-on: rust
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+
+      - name: Configure Python for PyO3
+        run: |
+          PYTHON_BIN="$(command -v python3 || command -v python)"
+          echo "PYO3_PYTHON=${PYTHON_BIN}" >> "$GITHUB_ENV"
+          echo "PYTHON_SYS_EXECUTABLE=${PYTHON_BIN}" >> "$GITHUB_ENV"
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace --all-features
+
+      - name: Run tests
+        run: cargo test --workspace --all-features
+
+      - name: Run integration tests
+        run: cargo test --workspace --all-features --test '*'
+
+      - name: Run doc tests
+        run: cargo test --workspace --doc
