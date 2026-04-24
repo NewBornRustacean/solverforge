@@ -67,4 +67,63 @@ fn entity_descriptor_preserves_mixed_variable_declaration_order() {
 
     assert!(chain_pos < worker_pos);
     assert!(worker_pos < backup_pos);
+
+    assert!(expanded.contains("fn __solverforge_scalar_variable_count"));
+    assert!(expanded.contains("fn __solverforge_scalar_get_by_index"));
+    assert!(expanded.contains("fn __solverforge_scalar_set_by_index"));
+
+    let name_helper_pos = expanded
+        .find("fn __solverforge_scalar_variable_name_by_index")
+        .expect("indexed scalar name helper should exist");
+    let name_helper_end = expanded[name_helper_pos..]
+        .find("fn __solverforge_scalar_allows_unassigned_by_index")
+        .map(|offset| name_helper_pos + offset)
+        .expect("next scalar helper should exist");
+    let name_helper = &expanded[name_helper_pos..name_helper_end];
+    let worker_name_pos = name_helper
+        .find("\"worker_idx\"")
+        .expect("worker scalar index arm should exist");
+    let backup_name_pos = name_helper
+        .find("\"backup_idx\"")
+        .expect("backup scalar index arm should exist");
+    assert!(worker_name_pos < backup_name_pos);
+}
+
+#[test]
+fn chained_option_usize_does_not_enter_scalar_helper_indexing() {
+    let input = parse_quote! {
+        struct Task {
+            #[planning_id]
+            id: String,
+            #[planning_variable(chained = true, value_range = "tasks")]
+            previous: Option<usize>,
+            #[planning_variable(allows_unassigned = true, value_range = "workers")]
+            worker: Option<usize>,
+        }
+    };
+
+    let expanded = expand_derive(input)
+        .expect("entity expansion should succeed")
+        .to_string();
+
+    assert!(expanded.contains("VariableDescriptor :: chained (\"previous\")"));
+    assert!(expanded.contains("VariableDescriptor :: genuine (\"worker\")"));
+    assert!(!expanded.contains("__solverforge_get_previous_typed"));
+    assert!(!expanded.contains("__solverforge_set_previous_typed"));
+    assert!(expanded.contains("__solverforge_get_worker_typed"));
+    assert!(expanded.contains("__solverforge_set_worker_typed"));
+    assert!(expanded.contains(
+        "pub (crate) const fn __solverforge_scalar_variable_count () -> usize { 1usize }"
+    ));
+
+    let name_helper_pos = expanded
+        .find("fn __solverforge_scalar_variable_name_by_index")
+        .expect("indexed scalar name helper should exist");
+    let name_helper_end = expanded[name_helper_pos..]
+        .find("fn __solverforge_scalar_allows_unassigned_by_index")
+        .map(|offset| name_helper_pos + offset)
+        .expect("next scalar helper should exist");
+    let name_helper = &expanded[name_helper_pos..name_helper_end];
+    assert!(name_helper.contains("0usize => :: core :: option :: Option :: Some (\"worker\")"));
+    assert!(!name_helper.contains("\"previous\""));
 }

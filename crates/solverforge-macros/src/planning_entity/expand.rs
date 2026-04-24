@@ -3,7 +3,8 @@ use quote::quote;
 use syn::{Data, DeriveInput, Error, Fields};
 
 use crate::attr_parse::{
-    get_attribute, has_attribute, parse_attribute_bool, parse_attribute_string,
+    get_attribute, has_attribute, has_attribute_argument, parse_attribute_bool,
+    parse_attribute_string,
 };
 
 use super::list_variable::{generate_list_metadata, generate_list_trait_impl};
@@ -51,6 +52,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         .iter()
         .filter(|f| has_attribute(&f.attrs, "planning_variable"))
         .collect();
+    validate_scalar_hook_targets(&planning_variables)?;
     let scalar_helpers = generate_scalar_helpers(name, fields, &planning_variables)?;
     let list_variables: Vec<_> = fields
         .iter()
@@ -92,11 +94,11 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             if has_attribute(&field.attrs, "planning_variable") {
                 let field_name = field.ident.as_ref().unwrap();
                 let field_name_str = field_name.to_string();
-                let supports_usize_hooks = field_is_option_usize(&field.ty);
                 let attr = get_attribute(&field.attrs, "planning_variable").unwrap();
                 let allows_unassigned =
                     parse_attribute_bool(attr, "allows_unassigned").unwrap_or(false);
                 let is_chained = parse_attribute_bool(attr, "chained").unwrap_or(false);
+                let supports_scalar_helpers = field_is_option_usize(&field.ty) && !is_chained;
                 let value_range_provider = parse_attribute_string(attr, "value_range_provider")
                     .or_else(|| parse_attribute_string(attr, "value_range"));
                 let countable_range = parse_attribute_string(attr, "countable_range");
@@ -112,7 +114,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                 let base = if is_chained {
                     quote! { ::solverforge::__internal::VariableDescriptor::chained(#field_name_str) }
                 } else {
-                    let maybe_usize_accessors = if supports_usize_hooks {
+                    let maybe_usize_accessors = if supports_scalar_helpers {
                         quote! { .with_usize_accessors(Self::#getter_name, Self::#setter_name) }
                     } else {
                         TokenStream::new()
@@ -140,7 +142,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                         &format!("__solverforge_values_for_{}", field_name_str),
                         proc_macro2::Span::call_site(),
                     );
-                    let maybe_entity_provider = if supports_usize_hooks && provider_is_entity_field {
+                    let maybe_entity_provider = if supports_scalar_helpers && provider_is_entity_field {
                         quote! { .with_entity_value_provider(Self::#provider_getter_name) }
                     } else {
                         TokenStream::new()
@@ -202,13 +204,14 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         .map(|field| {
             let field_name = field.ident.as_ref().unwrap();
             let field_name_str = field_name.to_string();
-            let supports_usize_hooks = field_is_option_usize(&field.ty);
             let attr = get_attribute(&field.attrs, "planning_variable").unwrap();
+            let is_chained = parse_attribute_bool(attr, "chained").unwrap_or(false);
+            let supports_scalar_helpers = field_is_option_usize(&field.ty) && !is_chained;
             let value_range_provider = parse_attribute_string(attr, "value_range_provider")
                 .or_else(|| parse_attribute_string(attr, "value_range"));
             let provider_helper = value_range_provider
                 .filter(|provider_id| {
-                    fields.iter().any(|candidate| {
+                    supports_scalar_helpers && fields.iter().any(|candidate| {
                         candidate
                             .ident
                             .as_ref()
@@ -234,7 +237,7 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                     }
                 });
 
-            if supports_usize_hooks {
+            if supports_scalar_helpers {
                 let getter_name = syn::Ident::new(
                     &format!("__solverforge_get_{}", field_name_str),
                     proc_macro2::Span::call_site(),
@@ -484,4 +487,39 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
     };
 
     Ok(expanded)
+}
+
+fn validate_scalar_hook_targets(planning_variables: &[&syn::Field]) -> Result<(), Error> {
+    const SCALAR_HOOK_ATTRIBUTES: &[&str] = &[
+        "nearby_value_distance_meter",
+        "nearby_entity_distance_meter",
+        "construction_entity_order_key",
+        "construction_value_order_key",
+    ];
+
+    for field in planning_variables {
+        let attr = get_attribute(&field.attrs, "planning_variable").unwrap();
+        let has_scalar_hook = SCALAR_HOOK_ATTRIBUTES
+            .iter()
+            .any(|key| has_attribute_argument(attr, key));
+        if !has_scalar_hook {
+            continue;
+        }
+
+        if parse_attribute_bool(attr, "chained").unwrap_or(false) {
+            return Err(Error::new_spanned(
+                *field,
+                "chained planning variables cannot declare scalar runtime hook attributes",
+            ));
+        }
+
+        if !field_is_option_usize(&field.ty) {
+            return Err(Error::new_spanned(
+                *field,
+                "scalar runtime hook attributes require a non-chained Option<usize> planning variable",
+            ));
+        }
+    }
+
+    Ok(())
 }

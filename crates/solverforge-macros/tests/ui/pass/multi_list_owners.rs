@@ -1,52 +1,7 @@
-use solverforge::prelude::*;
+#[path = "multi_list_owners/domain/mod.rs"]
+mod domain;
 
-#[problem_fact]
-struct RouteTask {
-    #[planning_id]
-    id: usize,
-}
-
-#[problem_fact]
-struct ShiftTask {
-    #[planning_id]
-    id: usize,
-}
-
-#[planning_entity]
-struct Route {
-    #[planning_id]
-    id: usize,
-
-    #[planning_list_variable(element_collection = "route_tasks")]
-    tasks: Vec<usize>,
-}
-
-#[planning_entity]
-struct Shift {
-    #[planning_id]
-    id: usize,
-
-    #[planning_list_variable(element_collection = "shift_tasks")]
-    tasks: Vec<usize>,
-}
-
-#[planning_solution]
-struct Plan {
-    #[planning_entity_collection]
-    routes: Vec<Route>,
-
-    #[planning_entity_collection]
-    shifts: Vec<Shift>,
-
-    #[problem_fact_collection]
-    route_tasks: Vec<RouteTask>,
-
-    #[problem_fact_collection]
-    shift_tasks: Vec<ShiftTask>,
-
-    #[planning_score]
-    score: Option<HardSoftScore>,
-}
+use domain::*;
 
 fn main() {
     let mut plan = Plan {

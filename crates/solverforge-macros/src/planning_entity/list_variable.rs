@@ -3,7 +3,6 @@ use quote::quote;
 use syn::{Error, Ident, Type};
 
 use crate::attr_parse::{get_attribute, parse_attribute_string};
-use crate::list_registry::record_list_entity_metadata;
 
 pub(super) fn generate_list_metadata(
     entity_name: &Ident,
@@ -110,9 +109,6 @@ pub(super) fn generate_list_metadata(
         "k_opt_feasible_fn",
         field,
     )?;
-
-    record_list_entity_metadata(&entity_name.to_string(), element_collection.clone());
-
     Ok(quote! {
         pub const __SOLVERFORGE_LIST_VARIABLE_COUNT: usize = 1;
         const __SOLVERFORGE_LIST_VARIABLE_NAME: &'static str = #field_name_str;

@@ -4,11 +4,10 @@ use proc_macro::TokenStream;
 
 mod attr_parse;
 mod entrypoints;
-mod list_registry;
 mod planning_entity;
+mod planning_model;
 mod planning_solution;
 mod problem_fact;
-mod scalar_registry;
 
 #[proc_macro_attribute]
 pub fn planning_entity(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -23,6 +22,11 @@ pub fn planning_solution(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn problem_fact(attr: TokenStream, item: TokenStream) -> TokenStream {
     entrypoints::problem_fact_attr(attr, item)
+}
+
+#[proc_macro]
+pub fn planning_model(input: TokenStream) -> TokenStream {
+    entrypoints::planning_model_macro(input)
 }
 
 #[proc_macro_derive(

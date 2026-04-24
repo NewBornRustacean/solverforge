@@ -3,7 +3,6 @@ use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Error, Fields};
 
 use crate::attr_parse::has_attribute;
-use crate::scalar_registry::lookup_scalar_entity_metadata;
 
 use super::config::{
     parse_config_path, parse_constraints_path, parse_shadow_config, parse_solver_toml_path,
@@ -60,14 +59,20 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             let field_name_str = field_name.to_string();
             let element_type = extract_collection_inner_type(&f.ty)?;
             Some(quote! {
-                .with_entity(#element_type::entity_descriptor(#field_name_str).with_extractor(
-                    Box::new(::solverforge::__internal::EntityCollectionExtractor::new(
-                        stringify!(#element_type),
-                        #field_name_str,
-                        |s: &#name| &s.#field_name,
-                        |s: &mut #name| &mut s.#field_name,
-                    ))
-                ))
+                .with_entity({
+                    let __solverforge_entity_descriptor =
+                        #element_type::entity_descriptor(#field_name_str);
+                    let __solverforge_entity_type_name =
+                        __solverforge_entity_descriptor.type_name;
+                    __solverforge_entity_descriptor.with_extractor(
+                        Box::new(::solverforge::__internal::EntityCollectionExtractor::new(
+                            __solverforge_entity_type_name,
+                            #field_name_str,
+                            |s: &#name| &s.#field_name,
+                            |s: &mut #name| &mut s.#field_name,
+                        ))
+                    )
+                })
             })
         })
         .collect();
@@ -80,226 +85,20 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             let field_name_str = field_name.to_string();
             let element_type = extract_collection_inner_type(&f.ty)?;
             Some(quote! {
-                .with_problem_fact(#element_type::problem_fact_descriptor(#field_name_str).with_extractor(
-                    Box::new(::solverforge::__internal::EntityCollectionExtractor::new(
-                        stringify!(#element_type),
-                        #field_name_str,
-                        |s: &#name| &s.#field_name,
-                        |s: &mut #name| &mut s.#field_name,
-                    ))
-                ))
-            })
-        })
-        .collect();
-
-    let scalar_descriptor_fields: Vec<_> = fields
-        .iter()
-        .filter(|f| has_attribute(&f.attrs, "planning_entity_collection"))
-        .enumerate()
-        .filter_map(|(idx, field)| {
-            let field_name = field.ident.as_ref()?;
-            let field_type = extract_collection_inner_type(&field.ty)?;
-            let syn::Type::Path(type_path) = field_type else {
-                return None;
-            };
-            let type_name = type_path.path.segments.last()?.ident.to_string();
-            let metadata = lookup_scalar_entity_metadata(&type_name)?;
-            if metadata.variables.is_empty() {
-                return None;
-            }
-            Some((idx, field_name, metadata))
-        })
-        .collect();
-
-    let scalar_descriptor_meter_helpers: Vec<_> = scalar_descriptor_fields
-        .iter()
-        .flat_map(|(_, field_name, metadata)| {
-            metadata.variables.iter().flat_map(move |variable| {
-                let mut helpers = Vec::new();
-                if let Some(meter_name) = &variable.nearby_value_distance_meter {
-                    let meter_ident = format_ident!("{meter_name}");
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_nearby_value_distance_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    helpers.push(quote! {
-                        fn #helper_ident(
-                            solution: &dyn ::std::any::Any,
-                            entity_index: usize,
-                            value: usize,
-                        ) -> f64 {
-                            let solution = solution
-                                .downcast_ref::<Self>()
-                                .expect("solution type mismatch for nearby value distance meter");
-                            let entity = &solution.#field_name[entity_index];
-                            #meter_ident(solution, entity, value)
-                        }
-                    });
-                }
-                if let Some(meter_name) = &variable.nearby_entity_distance_meter {
-                    let meter_ident = format_ident!("{meter_name}");
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_nearby_entity_distance_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    helpers.push(quote! {
-                        fn #helper_ident(
-                            solution: &dyn ::std::any::Any,
-                            left_entity_index: usize,
-                            right_entity_index: usize,
-                        ) -> f64 {
-                            let solution = solution
-                                .downcast_ref::<Self>()
-                                .expect("solution type mismatch for nearby entity distance meter");
-                            let left = &solution.#field_name[left_entity_index];
-                            let right = &solution.#field_name[right_entity_index];
-                            #meter_ident(solution, left, right)
-                        }
-                    });
-                }
-                if let Some(order_key_name) = &variable.construction_entity_order_key {
-                    let order_key_ident = format_ident!("{order_key_name}");
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_construction_entity_order_key_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    helpers.push(quote! {
-                        fn #helper_ident(
-                            solution: &dyn ::std::any::Any,
-                            entity_index: usize,
-                        ) -> i64 {
-                            let solution = solution
-                                .downcast_ref::<Self>()
-                                .expect("solution type mismatch for construction entity order key");
-                            let entity = &solution.#field_name[entity_index];
-                            #order_key_ident(solution, entity)
-                        }
-                    });
-                }
-                if let Some(order_key_name) = &variable.construction_value_order_key {
-                    let order_key_ident = format_ident!("{order_key_name}");
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_construction_value_order_key_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    helpers.push(quote! {
-                        fn #helper_ident(
-                            solution: &dyn ::std::any::Any,
-                            entity_index: usize,
-                            value: usize,
-                        ) -> i64 {
-                            let solution = solution
-                                .downcast_ref::<Self>()
-                                .expect("solution type mismatch for construction value order key");
-                            let entity = &solution.#field_name[entity_index];
-                            #order_key_ident(solution, entity, value)
-                        }
-                    });
-                }
-                helpers
-            })
-        })
-        .collect();
-
-    let scalar_descriptor_meter_attachments: Vec<_> = scalar_descriptor_fields
-        .iter()
-        .flat_map(|(descriptor_index, field_name, metadata)| {
-            metadata.variables.iter().flat_map(move |variable| {
-                let variable_name = &variable.field_name;
-                let mut attachments = Vec::new();
-                if variable.nearby_value_distance_meter.is_some() {
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_nearby_value_distance_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    attachments.push(quote! {
-                        {
-                            let entity_descriptor = descriptor
-                                .entity_descriptors
-                                .get_mut(#descriptor_index)
-                                .expect("entity descriptor missing for nearby value distance meter");
-                            let variable_descriptor = entity_descriptor
-                                .variable_descriptors
-                                .iter_mut()
-                                .find(|variable| variable.name == #variable_name)
-                                .expect("variable descriptor missing for nearby value distance meter");
-                            variable_descriptor.nearby_value_distance_meter =
-                                ::core::option::Option::Some(Self::#helper_ident);
-                        }
-                    });
-                }
-                if variable.nearby_entity_distance_meter.is_some() {
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_nearby_entity_distance_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    attachments.push(quote! {
-                        {
-                            let entity_descriptor = descriptor
-                                .entity_descriptors
-                                .get_mut(#descriptor_index)
-                                .expect("entity descriptor missing for nearby entity distance meter");
-                            let variable_descriptor = entity_descriptor
-                                .variable_descriptors
-                                .iter_mut()
-                                .find(|variable| variable.name == #variable_name)
-                                .expect("variable descriptor missing for nearby entity distance meter");
-                            variable_descriptor.nearby_entity_distance_meter =
-                                ::core::option::Option::Some(Self::#helper_ident);
-                        }
-                    });
-                }
-                if variable.construction_entity_order_key.is_some() {
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_construction_entity_order_key_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    attachments.push(quote! {
-                        {
-                            let entity_descriptor = descriptor
-                                .entity_descriptors
-                                .get_mut(#descriptor_index)
-                                .expect("entity descriptor missing for construction entity order key");
-                            let variable_descriptor = entity_descriptor
-                                .variable_descriptors
-                                .iter_mut()
-                                .find(|variable| variable.name == #variable_name)
-                                .expect("variable descriptor missing for construction entity order key");
-                            variable_descriptor.construction_entity_order_key =
-                                ::core::option::Option::Some(Self::#helper_ident);
-                        }
-                    });
-                }
-                if variable.construction_value_order_key.is_some() {
-                    let helper_ident = format_ident!(
-                        "__solverforge_descriptor_construction_value_order_key_{}_{}",
-                        field_name,
-                        variable.field_name
-                    );
-                    attachments.push(quote! {
-                        {
-                            let entity_descriptor = descriptor
-                                .entity_descriptors
-                                .get_mut(#descriptor_index)
-                                .expect("entity descriptor missing for construction value order key");
-                            let variable_descriptor = entity_descriptor
-                                .variable_descriptors
-                                .iter_mut()
-                                .find(|variable| variable.name == #variable_name)
-                                .expect("variable descriptor missing for construction value order key");
-                            variable_descriptor.construction_value_order_key =
-                                ::core::option::Option::Some(Self::#helper_ident);
-                        }
-                    });
-                }
-                attachments
+                .with_problem_fact({
+                    let __solverforge_fact_descriptor =
+                        #element_type::problem_fact_descriptor(#field_name_str);
+                    let __solverforge_fact_type_name =
+                        __solverforge_fact_descriptor.type_name;
+                    __solverforge_fact_descriptor.with_extractor(
+                        Box::new(::solverforge::__internal::EntityCollectionExtractor::new(
+                            __solverforge_fact_type_name,
+                            #field_name_str,
+                            |s: &#name| &s.#field_name,
+                            |s: &mut #name| &mut s.#field_name,
+                        ))
+                    )
+                })
             })
         })
         .collect();
@@ -321,6 +120,39 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             quote! { #idx => this.#field_name.len(), }
         })
         .collect();
+    let collection_accessors: Vec<_> = fields
+        .iter()
+        .filter(|f| {
+            has_attribute(&f.attrs, "planning_entity_collection")
+                || has_attribute(&f.attrs, "problem_fact_collection")
+        })
+        .filter_map(|f| {
+            let field_name = f.ident.as_ref()?;
+            let element_type = extract_collection_inner_type(&f.ty)?;
+            let collection_ident = format_ident!("__solverforge_collection_{}", field_name);
+            let collection_mut_ident = format_ident!("__solverforge_collection_{}_mut", field_name);
+            let entity_ident = format_ident!("__solverforge_entity_{}", field_name);
+            Some(quote! {
+                #[doc(hidden)]
+                #[allow(dead_code, private_interfaces)]
+                pub fn #collection_ident(this: &Self) -> &[#element_type] {
+                    &this.#field_name
+                }
+
+                #[doc(hidden)]
+                #[allow(dead_code, private_interfaces)]
+                pub fn #collection_mut_ident(this: &mut Self) -> &mut [#element_type] {
+                    &mut this.#field_name
+                }
+
+                #[doc(hidden)]
+                #[allow(dead_code, private_interfaces)]
+                pub fn #entity_ident(this: &Self, entity_index: usize) -> &#element_type {
+                    &this.#field_name[entity_index]
+                }
+            })
+        })
+        .collect();
 
     let list_operations = generate_list_operations(fields);
     let runtime_phase_support = generate_runtime_phase_support(fields, &constraints_path, name);
@@ -339,8 +171,6 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
         }
 
         impl #impl_generics #name #ty_generics #where_clause {
-            #(#scalar_descriptor_meter_helpers)*
-
             pub fn descriptor() -> ::solverforge::__internal::SolutionDescriptor {
                 let mut descriptor = ::solverforge::__internal::SolutionDescriptor::new(
                     #name_str,
@@ -349,7 +179,12 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                 .with_score_field(#score_field_str)
                 #(#entity_descriptors)*
                 #(#fact_descriptors)*;
-                #(#scalar_descriptor_meter_attachments)*
+                <Self as ::solverforge::__internal::PlanningModelSupport>::attach_descriptor_scalar_hooks(
+                    &mut descriptor,
+                );
+                <Self as ::solverforge::__internal::PlanningModelSupport>::validate_model(
+                    &descriptor,
+                );
                 descriptor
             }
 
@@ -360,6 +195,8 @@ pub(crate) fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                     _ => 0,
                 }
             }
+
+            #(#collection_accessors)*
 
             #list_operations
             #runtime_solve_internal

@@ -37,6 +37,7 @@ pub use solverforge_solver::heuristic::selector::{
 pub use solverforge_solver::manager::{
     KOptPhaseBuilder, ListConstructionPhaseBuilder, PhaseFactory, SolverFactory,
 };
+pub use solverforge_solver::model_support::PlanningModelSupport;
 pub use solverforge_solver::runtime::{build_phases, Construction, RuntimePhase};
 pub use solverforge_solver::runtime::{ListVariableEntity, ListVariableMetadata};
 pub use solverforge_solver::scope::{ProgressCallback, SolverScope};

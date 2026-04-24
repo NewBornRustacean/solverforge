@@ -40,7 +40,7 @@ Attribute Macros
 ============================================================================
 */
 
-pub use solverforge_macros::{planning_entity, planning_solution, problem_fact};
+pub use solverforge_macros::{planning_entity, planning_model, planning_solution, problem_fact};
 
 // Derive macros (used by attribute macros, must be at root level)
 pub use solverforge_macros::{PlanningEntityImpl, PlanningSolutionImpl, ProblemFactImpl};

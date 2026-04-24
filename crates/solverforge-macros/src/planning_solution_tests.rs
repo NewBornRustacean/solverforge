@@ -1,8 +1,6 @@
 use crate::planning_solution::expand_derive;
 use syn::parse_quote;
 
-use crate::planning_entity;
-
 #[test]
 fn golden_solution_expansion_emits_constraint_streams_and_descriptor() {
     let input = parse_quote! {
@@ -25,6 +23,8 @@ fn golden_solution_expansion_emits_constraint_streams_and_descriptor() {
     assert!(expanded.contains("pub trait PlanConstraintStreams"));
     assert!(expanded
         .contains("pub fn descriptor () -> :: solverforge :: __internal :: SolutionDescriptor"));
+    assert!(expanded.contains("pub fn __solverforge_entity_tasks"));
+    assert!(expanded.contains("pub fn __solverforge_collection_tasks"));
     assert!(expanded.contains("create_constraints"));
 }
 
@@ -131,29 +131,42 @@ fn golden_solution_expansion_sorts_runtime_variables_by_descriptor_order() {
         .to_string();
 
     assert!(expanded.contains("__solverforge_variables . sort_by_key"));
+    assert!(expanded.contains("__solverforge_descriptor_variable_order"));
     assert!(expanded.contains("descriptor . entity_descriptors"));
     assert!(expanded.contains("variable_descriptors"));
-    assert!(
-        expanded.contains("position (| descriptor_var | descriptor_var . name == variable_name)")
-    );
+    assert!(expanded.contains("__solverforge_scalar_variable_count"));
+    assert!(expanded.contains("variable . name == __solverforge_variable_name"));
+    assert!(expanded.contains("variable . usize_getter . is_some ()"));
+    assert!(expanded.contains("PlanningModelSupport"));
+    assert!(expanded.contains("ctx . variable_name"));
     assert!(expanded.contains(":: solverforge :: __internal :: build_phases"));
 }
 
 #[test]
-fn solution_descriptor_carries_derived_scalar_nearby_meters() {
-    let entity_input = parse_quote! {
-        struct Task {
-            #[planning_variable(
-                value_range = "workers",
-                nearby_value_distance_meter = "worker_value_distance",
-                nearby_entity_distance_meter = "worker_entity_distance"
-            )]
-            worker_idx: Option<usize>,
+fn solution_scalar_runtime_does_not_require_registered_hook_metadata() {
+    let input = parse_quote! {
+        #[solverforge_constraints_path = "crate::constraints::create_constraints"]
+        struct Plan {
+            #[problem_fact_collection]
+            workers: Vec<Worker>,
+            #[planning_entity_collection]
+            tasks: Vec<Task>,
+            #[planning_score]
+            score: Option<HardSoftScore>,
         }
     };
-    planning_entity::expand_derive(entity_input)
-        .expect("entity expansion should register scalar metadata");
 
+    let expanded = expand_derive(input)
+        .expect("solution expansion should succeed without prior entity macro expansion")
+        .to_string();
+
+    assert!(expanded.contains("__solverforge_scalar_variable_count"));
+    assert!(expanded.contains("__solverforge_scalar_get_by_index"));
+    assert!(expanded.contains("__solverforge_scalar_set_by_index"));
+}
+
+#[test]
+fn solution_descriptor_delegates_scalar_hook_attachment_to_model_manifest() {
     let input = parse_quote! {
         #[solverforge_constraints_path = "crate::constraints::create_constraints"]
         struct Plan {
@@ -170,8 +183,7 @@ fn solution_descriptor_carries_derived_scalar_nearby_meters() {
         .expect("solution expansion should succeed")
         .to_string();
 
-    assert!(expanded.contains("__solverforge_descriptor_nearby_value_distance_tasks_worker_idx"));
-    assert!(expanded.contains("__solverforge_descriptor_nearby_entity_distance_tasks_worker_idx"));
-    assert!(expanded.contains("nearby_value_distance_meter = :: core :: option :: Option :: Some"));
-    assert!(expanded.contains("nearby_entity_distance_meter = :: core :: option :: Option :: Some"));
+    assert!(expanded.contains("PlanningModelSupport"));
+    assert!(expanded.contains("attach_descriptor_scalar_hooks"));
+    assert!(expanded.contains("validate_model"));
 }

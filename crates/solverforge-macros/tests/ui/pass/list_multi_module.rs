@@ -1,13 +1,7 @@
-#[path = "fixtures/list_multi_module_plan.rs"]
-mod plan;
-#[path = "fixtures/list_multi_module_container.rs"]
-mod container;
-#[path = "fixtures/list_multi_module_item.rs"]
-mod item;
+#[path = "list_multi_module/domain/mod.rs"]
+mod domain;
 
-pub use container::Container;
-pub use item::Item;
-pub use plan::Plan;
+use domain::*;
 
 fn main() {
     let _ = Plan {

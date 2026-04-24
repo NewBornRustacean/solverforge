@@ -1,31 +1,7 @@
-use solverforge::prelude::*;
+#[path = "field_only_solution/domain/mod.rs"]
+mod domain;
 
-#[planning_entity]
-struct Visit {
-    #[planning_id]
-    id: usize,
-}
-
-#[planning_entity]
-struct Route {
-    #[planning_id]
-    id: usize,
-
-    #[planning_list_variable(element_collection = "visits")]
-    visits: Vec<usize>,
-}
-
-#[planning_solution]
-struct Plan {
-    #[planning_entity_collection]
-    routes: Vec<Route>,
-
-    #[planning_entity_collection]
-    visits: Vec<Visit>,
-
-    #[planning_score]
-    score: Option<HardSoftScore>,
-}
+use domain::*;
 
 fn main() {
     let mut plan = Plan {

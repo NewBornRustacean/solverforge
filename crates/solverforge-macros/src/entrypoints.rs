@@ -82,6 +82,12 @@ pub(crate) fn problem_fact_attr(attr: TokenStream, item: TokenStream) -> TokenSt
     expanded.into()
 }
 
+pub(crate) fn planning_model_macro(input: TokenStream) -> TokenStream {
+    crate::planning_model::expand(input.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
 pub(crate) fn derive_planning_entity(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     crate::planning_entity::expand_derive(input)

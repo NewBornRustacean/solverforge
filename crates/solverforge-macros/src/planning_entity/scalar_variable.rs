@@ -3,17 +3,24 @@ use quote::quote;
 use syn::{Error, Ident};
 
 use crate::attr_parse::{get_attribute, parse_attribute_bool, parse_attribute_string};
-use crate::scalar_registry::{record_scalar_entity_metadata, ScalarVariableMetadata};
 
 use super::utils::field_is_option_usize;
 
 pub(super) fn generate_scalar_helpers(
-    entity_name: &Ident,
+    _entity_name: &Ident,
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     planning_variables: &[&syn::Field],
 ) -> Result<TokenStream, Error> {
     let mut helpers = Vec::new();
-    let mut metadata = Vec::new();
+    let mut getter_arms = Vec::new();
+    let mut setter_arms = Vec::new();
+    let mut name_arms = Vec::new();
+    let mut allows_unassigned_arms = Vec::new();
+    let mut value_range_provider_arms = Vec::new();
+    let mut countable_range_arms = Vec::new();
+    let mut provider_is_entity_field_arms = Vec::new();
+    let mut entity_slice_arms = Vec::new();
+    let mut scalar_variable_index = 0usize;
 
     for field in planning_variables {
         let field_name = field.ident.as_ref().unwrap();
@@ -22,18 +29,9 @@ pub(super) fn generate_scalar_helpers(
         let value_range_provider = parse_attribute_string(attr, "value_range_provider")
             .or_else(|| parse_attribute_string(attr, "value_range"));
         let countable_range = parse_attribute_string(attr, "countable_range");
-        let nearby_value_distance_meter =
-            parse_attribute_string(attr, "nearby_value_distance_meter");
-        let nearby_entity_distance_meter =
-            parse_attribute_string(attr, "nearby_entity_distance_meter");
-        let construction_entity_order_key =
-            parse_attribute_string(attr, "construction_entity_order_key");
-        let construction_value_order_key =
-            parse_attribute_string(attr, "construction_value_order_key");
+        let is_chained = parse_attribute_bool(attr, "chained").unwrap_or(false);
 
-        if !field_is_option_usize(&field.ty) {
-            continue;
-        }
+        let supports_scalar_helpers = field_is_option_usize(&field.ty) && !is_chained;
 
         let typed_getter_name = syn::Ident::new(
             &format!("__solverforge_get_{}_typed", field_name_str),
@@ -43,21 +41,6 @@ pub(super) fn generate_scalar_helpers(
             &format!("__solverforge_set_{}_typed", field_name_str),
             proc_macro2::Span::call_site(),
         );
-
-        helpers.push(quote! {
-            #[inline]
-            pub(crate) fn #typed_getter_name(entity: &Self) -> ::core::option::Option<usize> {
-                entity.#field_name
-            }
-
-            #[inline]
-            pub(crate) fn #typed_setter_name(
-                entity: &mut Self,
-                value: ::core::option::Option<usize>,
-            ) {
-                entity.#field_name = value;
-            }
-        });
 
         let provider_is_entity_field = value_range_provider.as_ref().is_some_and(|provider_id| {
             fields.iter().any(|candidate| {
@@ -69,7 +52,52 @@ pub(super) fn generate_scalar_helpers(
             })
         });
 
-        if provider_is_entity_field {
+        if supports_scalar_helpers {
+            let index = scalar_variable_index;
+            scalar_variable_index += 1;
+
+            helpers.push(quote! {
+                #[inline]
+                pub(crate) fn #typed_getter_name(entity: &Self) -> ::core::option::Option<usize> {
+                    entity.#field_name
+                }
+
+                #[inline]
+                pub(crate) fn #typed_setter_name(
+                    entity: &mut Self,
+                    value: ::core::option::Option<usize>,
+                ) {
+                    entity.#field_name = value;
+                }
+            });
+
+            getter_arms.push(quote! { #index => Self::#typed_getter_name(entity), });
+            setter_arms.push(quote! {
+                #index => {
+                    Self::#typed_setter_name(entity, value);
+                }
+            });
+            name_arms.push(quote! { #index => ::core::option::Option::Some(#field_name_str), });
+            let allows_unassigned =
+                parse_attribute_bool(attr, "allows_unassigned").unwrap_or(false);
+            allows_unassigned_arms.push(quote! { #index => #allows_unassigned, });
+            let provider_arm = if let Some(provider) = &value_range_provider {
+                quote! { #index => ::core::option::Option::Some(#provider), }
+            } else {
+                quote! { #index => ::core::option::Option::None, }
+            };
+            value_range_provider_arms.push(provider_arm);
+            let range_arm = if let Some(range) = &countable_range {
+                let (from, to) = parse_range(field, range)?;
+                quote! { #index => ::core::option::Option::Some((#from, #to)), }
+            } else {
+                quote! { #index => ::core::option::Option::None, }
+            };
+            countable_range_arms.push(range_arm);
+            provider_is_entity_field_arms.push(quote! { #index => #provider_is_entity_field, });
+        }
+
+        if supports_scalar_helpers && provider_is_entity_field {
             let provider_field = syn::Ident::new(
                 value_range_provider.as_ref().unwrap(),
                 proc_macro2::Span::call_site(),
@@ -84,27 +112,108 @@ pub(super) fn generate_scalar_helpers(
                     &entity.#provider_field
                 }
             });
+            let index = scalar_variable_index - 1;
+            entity_slice_arms.push(quote! {
+                #index => Self::#typed_provider_name(entity),
+            });
         }
-
-        metadata.push(ScalarVariableMetadata {
-            field_name: field_name_str,
-            allows_unassigned: parse_attribute_bool(attr, "allows_unassigned").unwrap_or(false),
-            value_range_provider,
-            countable_range: countable_range
-                .as_ref()
-                .map(|range| parse_range(field, range))
-                .transpose()?,
-            provider_is_entity_field,
-            nearby_value_distance_meter,
-            nearby_entity_distance_meter,
-            construction_entity_order_key,
-            construction_value_order_key,
-        });
     }
 
-    record_scalar_entity_metadata(&entity_name.to_string(), metadata);
+    let scalar_variable_count = scalar_variable_index;
 
-    Ok(quote! { #(#helpers)* })
+    Ok(quote! {
+        #(#helpers)*
+
+        #[inline]
+        pub(crate) const fn __solverforge_scalar_variable_count() -> usize {
+            #scalar_variable_count
+        }
+
+        #[inline]
+        pub(crate) const fn __solverforge_scalar_variable_name_by_index(
+            variable_index: usize,
+        ) -> ::core::option::Option<&'static str> {
+            match variable_index {
+                #(#name_arms)*
+                _ => ::core::option::Option::None,
+            }
+        }
+
+        #[inline]
+        pub(crate) const fn __solverforge_scalar_allows_unassigned_by_index(
+            variable_index: usize,
+        ) -> bool {
+            match variable_index {
+                #(#allows_unassigned_arms)*
+                _ => false,
+            }
+        }
+
+        #[inline]
+        pub(crate) const fn __solverforge_scalar_value_range_provider_by_index(
+            variable_index: usize,
+        ) -> ::core::option::Option<&'static str> {
+            match variable_index {
+                #(#value_range_provider_arms)*
+                _ => ::core::option::Option::None,
+            }
+        }
+
+        #[inline]
+        pub(crate) const fn __solverforge_scalar_countable_range_by_index(
+            variable_index: usize,
+        ) -> ::core::option::Option<(i64, i64)> {
+            match variable_index {
+                #(#countable_range_arms)*
+                _ => ::core::option::Option::None,
+            }
+        }
+
+        #[inline]
+        pub(crate) const fn __solverforge_scalar_provider_is_entity_field_by_index(
+            variable_index: usize,
+        ) -> bool {
+            match variable_index {
+                #(#provider_is_entity_field_arms)*
+                _ => false,
+            }
+        }
+
+        #[inline]
+        pub(crate) fn __solverforge_scalar_get_by_index(
+            entity: &Self,
+            variable_index: usize,
+        ) -> ::core::option::Option<usize> {
+            match variable_index {
+                #(#getter_arms)*
+                _ => ::core::option::Option::None,
+            }
+        }
+
+        #[inline]
+        pub(crate) fn __solverforge_scalar_set_by_index(
+            entity: &mut Self,
+            variable_index: usize,
+            value: ::core::option::Option<usize>,
+        ) {
+            match variable_index {
+                #(#setter_arms)*
+                _ => {}
+            }
+        }
+
+        #[inline]
+        pub(crate) fn __solverforge_scalar_values_by_index(
+            entity: &Self,
+            variable_index: usize,
+        ) -> &[usize] {
+            match variable_index {
+                #(#entity_slice_arms)*
+                _ => &[],
+            }
+        }
+
+    })
 }
 
 fn parse_range(field: &syn::Field, range: &str) -> Result<(i64, i64), Error> {

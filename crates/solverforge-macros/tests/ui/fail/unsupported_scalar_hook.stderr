@@ -1,0 +1,9 @@
+error: scalar runtime hook attributes require a non-chained Option<usize> planning variable
+  --> tests/ui/fail/unsupported_scalar_hook.rs:8:5
+   |
+ 8 | /     #[planning_variable(
+ 9 | |         value_range = "workers",
+10 | |         nearby_value_distance_meter = "worker_distance"
+11 | |     )]
+12 | |     pub worker: Option<i64>,
+   | |___________________________^

@@ -1,13 +1,7 @@
-#[path = "fixtures/scalar_multi_module_plan.rs"]
-mod plan;
-#[path = "fixtures/scalar_multi_module_task.rs"]
-mod task;
-#[path = "fixtures/scalar_multi_module_worker.rs"]
-mod worker;
+#[path = "scalar_multi_module/domain/mod.rs"]
+mod domain;
 
-pub use plan::Plan;
-pub use task::Task;
-pub use worker::Worker;
+use domain::*;
 
 fn main() {
     let _ = Plan {
@@ -15,4 +9,7 @@ fn main() {
         tasks: Vec::new(),
         score: None,
     };
+    let descriptor = Plan::descriptor();
+    let task_descriptor = &descriptor.entity_descriptors[0];
+    let _scalar_variable_count = task_descriptor.genuine_variable_descriptors().count();
 }

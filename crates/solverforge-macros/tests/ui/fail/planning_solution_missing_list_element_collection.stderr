@@ -1,7 +1,13 @@
-error: planning solution with list owner `routes` requires a `#[planning_entity_collection]` or `#[problem_fact_collection]` field named `all_visits`
-  --> tests/ui/fail/planning_solution_missing_list_element_collection.rs:12:1
-   |
-12 | #[planning_solution]
-   | ^^^^^^^^^^^^^^^^^^^^
-   |
-   = note: this error originates in the derive macro `::solverforge::PlanningSolutionImpl` (in Nightly builds, run with -Z macro-backtrace for more info)
+error: planning_model! list entity `Route` requires a solution collection field named `all_visits`
+ --> tests/ui/fail/planning_solution_missing_list_element_collection/domain/mod.rs
+  |
+  | / solverforge::planning_model! {
+  | |     root = "crates/solverforge-macros/tests/ui/fail/planning_solution_missing_list_element_collection/domain";
+  | |
+  | |     mod route;
+... |
+  | |     pub use plan::Plan;
+  | | }
+  | |_^
+  |
+  = note: this error originates in the macro `solverforge::planning_model` (in Nightly builds, run with -Z macro-backtrace for more info)
